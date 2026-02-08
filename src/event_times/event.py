@@ -1,11 +1,18 @@
 """Event time representation with uncertain boundaries."""
 
 import datetime
-from typing import Annotated, Any, Literal, Optional, Union
+import re
+from typing import Annotated, Literal, Optional, Union
 
 import numpy as np
 from dateutil.parser import parse as parse_datetime
-from pydantic import BaseModel, BeforeValidator, ConfigDict, PlainSerializer, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    PlainSerializer,
+    model_validator,
+)
 
 __all__ = [
     "Event",
@@ -18,7 +25,11 @@ __all__ = [
 ]
 
 
-def validate_datetime(value: Any) -> np.datetime64:
+# Type alias for inputs that can be converted to datetime
+DateTimeLike = Union[str, np.datetime64, datetime.datetime]
+
+
+def validate_datetime(value: DateTimeLike) -> np.datetime64:
     """Validate and convert various datetime formats to numpy datetime64.
 
     Args:
@@ -33,7 +44,7 @@ def validate_datetime(value: Any) -> np.datetime64:
     if isinstance(value, str):
         return np.datetime64(parse_datetime(value), "ns")
     if isinstance(value, np.datetime64):
-        return value
+        return value.astype("datetime64[ns]")
     if isinstance(value, datetime.datetime):
         return np.datetime64(value, "ns")
     msg = f"invalid datetime: {value!r}"
@@ -46,13 +57,10 @@ DateTime = Annotated[
     PlainSerializer(str),
 ]
 
-# Type alias for inputs that can be converted to datetime
-DateTimeLike = Union[str, np.datetime64, datetime.datetime]
-
 DurationUnits = Literal["D", "h", "m", "s", "ms", "us", "ns"]
 IntervalType = Literal["inner", "outer"]
 
-_NS_PER_UNIT: dict[str, int] = {
+_NS_PER_UNIT: dict[DurationUnits, int] = {
     "D": 86_400_000_000_000,
     "h": 3_600_000_000_000,
     "m": 60_000_000_000,
@@ -80,8 +88,6 @@ def _parse_date(date_str: str) -> tuple[int, int, int]:
     Raises:
         ValueError: If date format is invalid.
     """
-    import re
-
     # Remove common delimiters
     date_clean = re.sub(r"[-/\s.]", "", date_str)
 
@@ -95,7 +101,7 @@ def _parse_date(date_str: str) -> tuple[int, int, int]:
         try:
             datetime.datetime(year, month, day)
         except ValueError as e:
-            raise ValueError(f"Invalid date: {date_str} - {e}")
+            raise ValueError(f"Invalid date: {date_str} - {e}") from e
 
         return (year, month, day)
 
@@ -128,8 +134,6 @@ def _parse_time(time_str: str) -> tuple[int, int, int, int]:
     Raises:
         ValueError: If time format is invalid.
     """
-    import re
-
     # Split on decimal point to separate seconds from subseconds
     parts = time_str.split(".")
     time_part = parts[0]
@@ -198,14 +202,14 @@ class Event(BaseModel):
         color: Optional color code for visualization (e.g., hex color).
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     last_off: Optional[DateTime] = None
     first_on: Optional[DateTime] = None
     last_on: Optional[DateTime] = None
     first_off: Optional[DateTime] = None
     description: Optional[str] = None
     color: Optional[str] = None
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @model_validator(mode="after")
     def check_valid_event(self) -> "Event":
@@ -344,8 +348,10 @@ class Event(BaseModel):
         Returns:
             The sum of start and stop uncertainties (0 if unknown).
         """
-        start_unc = self.uncertainty_start or 0.0
-        stop_unc = self.uncertainty_stop or 0.0
+        start_unc = (
+            self.uncertainty_start if self.uncertainty_start is not None else 0.0
+        )
+        stop_unc = self.uncertainty_stop if self.uncertainty_stop is not None else 0.0
         return start_unc + stop_unc
 
     @property
@@ -466,25 +472,28 @@ class Event(BaseModel):
         if not self.overlaps(other):
             return None
 
-        merged_description = (
-            description
-            if description is not None
-            else f"{self.description or 'Event'} + {other.description or 'Event'}"
-        )
+        if description is not None:
+            merged_description = description
+        elif self.description is not None or other.description is not None:
+            merged_description = " + ".join(
+                d for d in [self.description, other.description] if d is not None
+            )
+        else:
+            merged_description = None
         merged_color = color if color is not None else self.color
 
         return Event(
             last_off=min(t for t in [self.last_off, other.last_off] if t is not None)
-            if (self.last_off or other.last_off)
+            if self.last_off is not None or other.last_off is not None
             else None,
             first_on=min(t for t in [self.first_on, other.first_on] if t is not None)
-            if (self.first_on or other.first_on)
+            if self.first_on is not None or other.first_on is not None
             else None,
             last_on=max(t for t in [self.last_on, other.last_on] if t is not None)
-            if (self.last_on or other.last_on)
+            if self.last_on is not None or other.last_on is not None
             else None,
             first_off=max(t for t in [self.first_off, other.first_off] if t is not None)
-            if (self.first_off or other.first_off)
+            if self.first_off is not None or other.first_off is not None
             else None,
             description=merged_description,
             color=merged_color,
@@ -493,8 +502,8 @@ class Event(BaseModel):
     @classmethod
     def from_interval(
         cls,
-        start: Any,
-        stop: Any,
+        start: DateTimeLike,
+        stop: DateTimeLike,
         interval_type: IntervalType = "inner",
         description: Optional[str] = None,
         color: Optional[str] = None,
@@ -547,7 +556,7 @@ class Event(BaseModel):
     @classmethod
     def from_duration(
         cls,
-        start: Any,
+        start: DateTimeLike,
         duration: float,
         duration_units: DurationUnits = "s",
         interval_type: IntervalType = "inner",
@@ -589,7 +598,9 @@ class Event(BaseModel):
             raise ValueError("Duration must be non-negative")
 
         start_dt = validate_datetime(start)
-        duration_td = np.timedelta64(round(duration * _NS_PER_UNIT[duration_units]), "ns")
+        duration_td = np.timedelta64(
+            round(duration * _NS_PER_UNIT[duration_units]), "ns"
+        )
         stop_dt = start_dt + duration_td
 
         if interval_type == "inner":
