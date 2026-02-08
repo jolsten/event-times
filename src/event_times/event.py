@@ -1,0 +1,708 @@
+"""Event time representation with uncertain boundaries."""
+
+import datetime
+from typing import Annotated, Any, Literal, Optional, Union
+
+import numpy as np
+from dateutil.parser import parse as parse_datetime
+from pydantic import BaseModel, BeforeValidator, ConfigDict, PlainSerializer, model_validator
+
+__all__ = [
+    "Event",
+    "validate_datetime",
+    "DateTime",
+    "DateTimeLike",
+    "DurationUnits",
+    "IntervalType",
+    # Note: _parse_date and _parse_time are private (not exported)
+]
+
+
+def validate_datetime(value: Any) -> np.datetime64:
+    """Validate and convert various datetime formats to numpy datetime64.
+
+    Args:
+        value: A datetime value as string, np.datetime64, or datetime.datetime.
+
+    Returns:
+        A numpy datetime64 object with nanosecond precision.
+
+    Raises:
+        TypeError: If the value cannot be converted to a datetime.
+    """
+    if isinstance(value, str):
+        return np.datetime64(parse_datetime(value), "ns")
+    if isinstance(value, np.datetime64):
+        return value
+    if isinstance(value, datetime.datetime):
+        return np.datetime64(value, "ns")
+    msg = f"invalid datetime: {value!r}"
+    raise TypeError(msg)
+
+
+DateTime = Annotated[
+    np.datetime64,
+    BeforeValidator(validate_datetime),
+    PlainSerializer(str),
+]
+
+# Type alias for inputs that can be converted to datetime
+DateTimeLike = Union[str, np.datetime64, datetime.datetime]
+
+DurationUnits = Literal["D", "h", "m", "s", "ms", "us", "ns"]
+IntervalType = Literal["inner", "outer"]
+
+_NS_PER_UNIT: dict[str, int] = {
+    "D": 86_400_000_000_000,
+    "h": 3_600_000_000_000,
+    "m": 60_000_000_000,
+    "s": 1_000_000_000,
+    "ms": 1_000_000,
+    "us": 1_000,
+    "ns": 1,
+}
+
+
+def _parse_date(date_str: str) -> tuple[int, int, int]:
+    """Parse flexible date format to (year, month, day).
+
+    Supports formats:
+    - YYYYMMDD (compact)
+    - YYYY-MM-DD (ISO with dashes)
+    - YYYY/MM/DD (with slashes)
+
+    Args:
+        date_str: Date string in various formats.
+
+    Returns:
+        Tuple of (year, month, day) as integers.
+
+    Raises:
+        ValueError: If date format is invalid.
+    """
+    import re
+
+    # Remove common delimiters
+    date_clean = re.sub(r"[-/\s.]", "", date_str)
+
+    # Try YYYYMMDD format
+    if len(date_clean) == 8 and date_clean.isdigit():
+        year = int(date_clean[0:4])
+        month = int(date_clean[4:6])
+        day = int(date_clean[6:8])
+
+        # Validate date components
+        try:
+            datetime.datetime(year, month, day)
+        except ValueError as e:
+            raise ValueError(f"Invalid date: {date_str} - {e}")
+
+        return (year, month, day)
+
+    # Try parsing with dateutil as fallback
+    try:
+        dt = datetime.datetime.fromisoformat(date_str)
+        return (dt.year, dt.month, dt.day)
+    except ValueError:
+        pass
+
+    raise ValueError(f"Invalid date format: {date_str}")
+
+
+def _parse_time(time_str: str) -> tuple[int, int, int, int]:
+    """Parse flexible time format to (hour, minute, second, microsecond).
+
+    Supports formats:
+    - HHMMSS (compact 6 digits)
+    - HHMM (compact 4 digits)
+    - HH:MM:SS (with colons)
+    - HH:MM (with colons, no seconds)
+    - Any of the above with .f+ subseconds
+
+    Args:
+        time_str: Time string in various formats.
+
+    Returns:
+        Tuple of (hour, minute, second, microsecond) as integers.
+
+    Raises:
+        ValueError: If time format is invalid.
+    """
+    import re
+
+    # Split on decimal point to separate seconds from subseconds
+    parts = time_str.split(".")
+    time_part = parts[0]
+    subsec_part = parts[1] if len(parts) > 1 else "0"
+
+    # Remove common delimiters from time part
+    time_clean = re.sub(r"[:\s]", "", time_part)
+
+    # Try HHMMSS format
+    if len(time_clean) == 6 and time_clean.isdigit():
+        hour = int(time_clean[0:2])
+        minute = int(time_clean[2:4])
+        second = int(time_clean[4:6])
+    elif len(time_clean) == 4 and time_clean.isdigit():
+        # HHMM format
+        hour = int(time_clean[0:2])
+        minute = int(time_clean[2:4])
+        second = 0
+    else:
+        raise ValueError(f"Invalid time format: {time_str}")
+
+    # Validate time components
+    if not (0 <= hour <= 23):
+        raise ValueError(f"Invalid hour: {hour}")
+    if not (0 <= minute <= 59):
+        raise ValueError(f"Invalid minute: {minute}")
+    if not (0 <= second <= 59):
+        raise ValueError(f"Invalid second: {second}")
+
+    # Parse subseconds (convert to microseconds)
+    if subsec_part and subsec_part != "0":
+        # Pad or truncate to 6 digits for microseconds
+        subsec_clean = subsec_part.ljust(6, "0")[:6]
+        microsecond = int(subsec_clean)
+    else:
+        microsecond = 0
+
+    return (hour, minute, second, microsecond)
+
+
+class Event(BaseModel):
+    """Represents an event with uncertain start and stop times.
+
+    An Event captures the temporal boundaries of an occurrence where the exact
+    start and stop times may be uncertain. The event is bounded by four optional
+    timestamps that define inner and outer intervals:
+
+    - last_off: Latest time the event was definitely not occurring (before start)
+    - first_on: Earliest time the event was definitely occurring (start bound)
+    - last_on: Latest time the event was definitely occurring (stop bound)
+    - first_off: Earliest time the event was definitely not occurring (after stop)
+
+    Timeline visualization:
+        last_off <= [uncertain] <= first_on <= last_on <= [uncertain] <= first_off
+
+    Attributes:
+        last_off: Latest timestamp before the event definitely started.
+            Accepts string, np.datetime64, or datetime.datetime.
+        first_on: Earliest timestamp when the event was definitely active.
+            Accepts string, np.datetime64, or datetime.datetime.
+        last_on: Latest timestamp when the event was definitely active.
+            Accepts string, np.datetime64, or datetime.datetime.
+        first_off: Earliest timestamp after the event definitely stopped.
+            Accepts string, np.datetime64, or datetime.datetime.
+        description: Optional human-readable description of the event.
+        color: Optional color code for visualization (e.g., hex color).
+    """
+
+    last_off: Optional[DateTime] = None
+    first_on: Optional[DateTime] = None
+    last_on: Optional[DateTime] = None
+    first_off: Optional[DateTime] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @model_validator(mode="after")
+    def check_valid_event(self) -> "Event":
+        """Validate that the event has valid temporal boundaries.
+
+        Returns:
+            The validated Event instance.
+
+        Raises:
+            ValueError: If the event lacks required start/stop times or has
+                invalid time ordering.
+        """
+        if (self.last_off is None) and (self.first_on is None):
+            raise ValueError(
+                "Event must have at least one start time (last_off or first_on)"
+            )
+        if (self.last_on is None) and (self.first_off is None):
+            raise ValueError(
+                "Event must have at least one stop time (last_on or first_off)"
+            )
+
+        # Check internal ordering constraints
+        if self.last_off is not None and self.first_on is not None:
+            if self.last_off > self.first_on:
+                raise ValueError("last_off must precede or equal first_on")
+
+        if self.first_on is not None and self.last_on is not None:
+            if self.first_on > self.last_on:
+                raise ValueError("first_on must precede or equal last_on")
+
+        if self.last_on is not None and self.first_off is not None:
+            if self.last_on > self.first_off:
+                raise ValueError("last_on must precede or equal first_off")
+
+        # Check overall validity
+        if self.duration < 0:
+            raise ValueError("Invalid interval: stop time precedes start time")
+
+        return self
+
+    @property
+    def times(
+        self,
+    ) -> tuple[
+        Optional[np.datetime64],
+        Optional[np.datetime64],
+        Optional[np.datetime64],
+        Optional[np.datetime64],
+    ]:
+        """Get all four boundary timestamps as a tuple.
+
+        Returns:
+            A tuple of (last_off, first_on, last_on, first_off).
+        """
+        return (self.last_off, self.first_on, self.last_on, self.first_off)
+
+    @property
+    def start(self) -> np.datetime64:
+        """Get the best estimate of the event start time.
+
+        Prefers first_on (earliest definite occurrence) over last_off.
+
+        Returns:
+            The start timestamp of the event.
+        """
+        if self.first_on is not None:
+            return self.first_on
+        return self.last_off  # type: ignore - object is invalid if both starts are None
+
+    @property
+    def stop(self) -> np.datetime64:
+        """Get the best estimate of the event stop time.
+
+        Prefers last_on (latest definite occurrence) over first_off.
+
+        Returns:
+            The stop timestamp of the event.
+        """
+        if self.last_on is not None:
+            return self.last_on
+        return self.first_off  # type: ignore - object is invalid if both stops are None
+
+    @property
+    def duration(self) -> float:
+        """Duration of the event in seconds.
+
+        Returns:
+            The duration between start and stop in seconds.
+        """
+        return self.get_duration(units="s")
+
+    @property
+    def inner_interval(self) -> tuple[Optional[np.datetime64], Optional[np.datetime64]]:
+        """Get the interval when the event was definitely occurring.
+
+        Returns:
+            A tuple of (first_on, last_on) representing the guaranteed active period.
+        """
+        return (self.first_on, self.last_on)
+
+    @property
+    def outer_interval(self) -> tuple[Optional[np.datetime64], Optional[np.datetime64]]:
+        """Get the interval that fully bounds the event including uncertainty.
+
+        Returns:
+            A tuple of (last_off, first_off) representing the outer boundary.
+        """
+        return (self.last_off, self.first_off)
+
+    @property
+    def uncertainty_start(self) -> Optional[float]:
+        """Get the temporal uncertainty at the event start in seconds.
+
+        Returns:
+            The duration between last_off and first_on, or None if either is missing.
+        """
+        if self.last_off is not None and self.first_on is not None:
+            return (self.first_on - self.last_off) / np.timedelta64(1, "s")
+        return None
+
+    @property
+    def uncertainty_stop(self) -> Optional[float]:
+        """Get the temporal uncertainty at the event stop in seconds.
+
+        Returns:
+            The duration between last_on and first_off, or None if either is missing.
+        """
+        if self.last_on is not None and self.first_off is not None:
+            return (self.first_off - self.last_on) / np.timedelta64(1, "s")
+        return None
+
+    @property
+    def total_uncertainty(self) -> float:
+        """Get the total temporal uncertainty in seconds.
+
+        Returns:
+            The sum of start and stop uncertainties (0 if unknown).
+        """
+        start_unc = self.uncertainty_start or 0.0
+        stop_unc = self.uncertainty_stop or 0.0
+        return start_unc + stop_unc
+
+    @property
+    def midpoint(self) -> np.datetime64:
+        """Get the temporal midpoint of the event.
+
+        Returns:
+            The timestamp halfway between start and stop.
+        """
+        duration_ns = self.stop - self.start
+        return self.start + duration_ns / 2
+
+    def is_point_event(self, threshold: float = 1e-6) -> bool:
+        """Check if this is effectively a point event (zero or near-zero duration).
+
+        Args:
+            threshold: Duration threshold in seconds. Events with duration less than
+                or equal to this value are considered point events.
+                Default is 1 microsecond (1e-6).
+
+        Returns:
+            True if duration is less than or equal to the threshold.
+
+        Examples:
+            >>> event = Event.from_duration("2024-01-01T10:00:00", 0.0001)
+            >>> event.is_point_event()  # Uses default 1 microsecond
+            False
+            >>> event.is_point_event(threshold=0.001)  # 1 millisecond threshold
+            True
+        """
+        return bool(self.duration <= threshold)
+
+    def get_duration(self, units: DurationUnits = "s") -> float:
+        """Get the event duration in specified units.
+
+        Args:
+            units: Time unit ('D', 'h', 'm', 's', 'ms', 'us', 'ns').
+
+        Returns:
+            The duration in the requested units.
+        """
+        return (self.stop - self.start) / np.timedelta64(1, units)
+
+    def overlaps(self, other: "Event") -> bool:
+        """Check if this event overlaps with another event.
+
+        Args:
+            other: Another Event instance to check overlap with.
+
+        Returns:
+            True if the events overlap (considering outer intervals).
+        """
+        return bool(self.start < other.stop and other.start < self.stop)
+
+    def contains(self, timestamp: np.datetime64) -> bool:
+        """Check if a timestamp falls within the event's outer interval.
+
+        Args:
+            timestamp: The timestamp to check.
+
+        Returns:
+            True if the timestamp is between start and stop.
+        """
+        return bool(self.start <= timestamp <= self.stop)
+
+    def definitely_contains(self, timestamp: np.datetime64) -> bool:
+        """Check if a timestamp is definitely within the event (inner interval).
+
+        Args:
+            timestamp: The timestamp to check.
+
+        Returns:
+            True if the timestamp is in the inner interval, False otherwise.
+        """
+        if self.first_on is None or self.last_on is None:
+            return False
+        return bool(self.first_on <= timestamp <= self.last_on)
+
+    def gap_between(self, other: "Event") -> float:
+        """Calculate the temporal gap between this event and another.
+
+        Args:
+            other: Another Event instance.
+
+        Returns:
+            Gap duration in seconds. Returns 0 if events overlap or touch,
+            positive value if there's a gap, negative value if they overlap.
+        """
+        if self.overlaps(other):
+            # Calculate overlap amount (negative gap)
+            overlap_start = max(self.start, other.start)
+            overlap_stop = min(self.stop, other.stop)
+            return -float((overlap_stop - overlap_start) / np.timedelta64(1, "s"))
+
+        # Events don't overlap - calculate gap
+        if self.stop <= other.start:
+            return float((other.start - self.stop) / np.timedelta64(1, "s"))
+        else:
+            return float((self.start - other.stop) / np.timedelta64(1, "s"))
+
+    def merge(
+        self,
+        other: "Event",
+        description: Optional[str] = None,
+        color: Optional[str] = None,
+    ) -> Optional["Event"]:
+        """Merge this event with another overlapping event.
+
+        Args:
+            other: Another Event instance to merge with.
+            description: Custom description for merged event. If None, combines
+                both descriptions.
+            color: Color for merged event. If None, uses this event's color.
+
+        Returns:
+            A new Event representing the union, or None if events don't overlap.
+        """
+        if not self.overlaps(other):
+            return None
+
+        merged_description = (
+            description
+            if description is not None
+            else f"{self.description or 'Event'} + {other.description or 'Event'}"
+        )
+        merged_color = color if color is not None else self.color
+
+        return Event(
+            last_off=min(t for t in [self.last_off, other.last_off] if t is not None)
+            if (self.last_off or other.last_off)
+            else None,
+            first_on=min(t for t in [self.first_on, other.first_on] if t is not None)
+            if (self.first_on or other.first_on)
+            else None,
+            last_on=max(t for t in [self.last_on, other.last_on] if t is not None)
+            if (self.last_on or other.last_on)
+            else None,
+            first_off=max(t for t in [self.first_off, other.first_off] if t is not None)
+            if (self.first_off or other.first_off)
+            else None,
+            description=merged_description,
+            color=merged_color,
+        )
+
+    @classmethod
+    def from_interval(
+        cls,
+        start: Any,
+        stop: Any,
+        interval_type: IntervalType = "inner",
+        description: Optional[str] = None,
+        color: Optional[str] = None,
+    ) -> "Event":
+        """Create an Event from a start-stop interval.
+
+        Args:
+            start: Start timestamp (any format accepted by validate_datetime).
+            stop: Stop timestamp (any format accepted by validate_datetime).
+            interval_type: Whether the provided interval represents the 'inner'
+                (definite) interval or 'outer' (bounding) interval. Default is 'inner'.
+            description: Optional event description.
+            color: Optional color code.
+
+        Returns:
+            A new Event instance.
+
+        Examples:
+            >>> # Create event with known definite interval
+            >>> event = Event.from_interval(
+            ...     "2024-01-01T10:00:00",
+            ...     "2024-01-01T11:00:00",
+            ...     interval_type="inner"
+            ... )
+            >>> # Create event with outer bounds only
+            >>> event = Event.from_interval(
+            ...     "2024-01-01T09:55:00",
+            ...     "2024-01-01T11:05:00",
+            ...     interval_type="outer"
+            ... )
+        """
+        start_dt = validate_datetime(start)
+        stop_dt = validate_datetime(stop)
+
+        if interval_type == "inner":
+            return cls(
+                first_on=start_dt,
+                last_on=stop_dt,
+                description=description,
+                color=color,
+            )
+        else:  # outer
+            return cls(
+                last_off=start_dt,
+                first_off=stop_dt,
+                description=description,
+                color=color,
+            )
+
+    @classmethod
+    def from_duration(
+        cls,
+        start: Any,
+        duration: float,
+        duration_units: DurationUnits = "s",
+        interval_type: IntervalType = "inner",
+        description: Optional[str] = None,
+        color: Optional[str] = None,
+    ) -> "Event":
+        """Create an Event from a start time and duration.
+
+        Args:
+            start: Start timestamp (any format accepted by validate_datetime).
+            duration: Duration value (must be non-negative).
+            duration_units: Time unit for duration ('D', 'h', 'm', 's', 'ms', 'us', 'ns').
+                Default is 's' (seconds).
+            interval_type: Whether to set the 'inner' (definite) interval or 'outer'
+                (bounding) interval. Default is 'inner'.
+            description: Optional event description.
+            color: Optional color code.
+
+        Returns:
+            A new Event instance.
+
+        Raises:
+            ValueError: If duration is negative.
+
+        Examples:
+            >>> # Create 1-hour event
+            >>> event = Event.from_duration("2024-01-01T10:00:00", 3600)
+            >>> # Create 2-hour event using hour units
+            >>> event = Event.from_duration("2024-01-01T10:00:00", 2, duration_units="h")
+            >>> # Create event with outer interval
+            >>> event = Event.from_duration(
+            ...     "2024-01-01T10:00:00",
+            ...     1,
+            ...     duration_units="h",
+            ...     interval_type="outer"
+            ... )
+        """
+        if duration < 0:
+            raise ValueError("Duration must be non-negative")
+
+        start_dt = validate_datetime(start)
+        duration_td = np.timedelta64(round(duration * _NS_PER_UNIT[duration_units]), "ns")
+        stop_dt = start_dt + duration_td
+
+        if interval_type == "inner":
+            return cls(
+                first_on=start_dt,
+                last_on=stop_dt,
+                description=description,
+                color=color,
+            )
+        else:  # outer
+            return cls(
+                last_off=start_dt,
+                first_off=stop_dt,
+                description=description,
+                color=color,
+            )
+
+    @classmethod
+    def from_merlin(
+        cls,
+        start_date: str,
+        start_time: str,
+        end_time: str,
+        description: Optional[str] = None,
+        color: Optional[str] = None,
+    ) -> "Event":
+        """Create an Event from Merlin-style date and time strings.
+
+        Assumes the event occurs within a single 24-hour period. If end_time is
+        earlier than start_time (e.g., start='23:00', end='01:00'), the end is
+        assumed to occur on the next day.
+
+        Supports flexible formats:
+        - Dates: YYYYMMDD, YYYY-MM-DD, YYYY/MM/DD, etc.
+        - Times: HHMMSS, HH:MM:SS, HHMMSS.fff, HH:MM:SS.ffffff, etc.
+
+        Args:
+            start_date: Date string (e.g., '20240101', '2024-01-01', '2024/01/01').
+            start_time: Start time string (e.g., '103000', '10:30:00', '103000.123').
+            end_time: End time string (e.g., '114500', '11:45:00', '114500.456').
+            description: Optional event description.
+            color: Optional color code.
+
+        Returns:
+            A new Event instance with inner interval set.
+
+        Examples:
+            >>> # ISO format
+            >>> event = Event.from_merlin('2024-01-01', '10:00:00', '11:00:00')
+            >>> # Compact format
+            >>> event = Event.from_merlin('20240101', '100000', '110000')
+            >>> # Mixed format with subseconds
+            >>> event = Event.from_merlin('2024-01-01', '100000.123', '110000.456')
+            >>> # Event spanning midnight
+            >>> event = Event.from_merlin('20240101', '230000', '010000')
+        """
+        # Parse start date and time
+        year, month, day = _parse_date(start_date)
+        start_h, start_m, start_s, start_us = _parse_time(start_time)
+
+        start_dt_obj = datetime.datetime(
+            year, month, day, start_h, start_m, start_s, start_us
+        )
+        start_dt = validate_datetime(start_dt_obj)
+
+        # Parse end time (same day first)
+        end_h, end_m, end_s, end_us = _parse_time(end_time)
+        end_dt_same_day_obj = datetime.datetime(
+            year, month, day, end_h, end_m, end_s, end_us
+        )
+        end_dt_same_day = validate_datetime(end_dt_same_day_obj)
+
+        # If end is before or equal to start, assume it's the next day
+        if end_dt_same_day <= start_dt:
+            next_day_obj = start_dt_obj + datetime.timedelta(days=1)
+            end_dt_obj = datetime.datetime(
+                next_day_obj.year,
+                next_day_obj.month,
+                next_day_obj.day,
+                end_h,
+                end_m,
+                end_s,
+                end_us,
+            )
+            end_dt = validate_datetime(end_dt_obj)
+        else:
+            end_dt = end_dt_same_day
+
+        return cls(
+            first_on=start_dt,
+            last_on=end_dt,
+            description=description,
+            color=color,
+        )
+
+    def __contains__(self, timestamp: np.datetime64) -> bool:
+        """Enable 'timestamp in event' syntax.
+
+        Args:
+            timestamp: The timestamp to check.
+
+        Returns:
+            True if the timestamp is within the event.
+        """
+        return self.contains(timestamp)
+
+    def __lt__(self, other: "Event") -> bool:
+        """Compare events by start time for sorting.
+
+        Args:
+            other: Another Event instance.
+
+        Returns:
+            True if this event starts before the other.
+        """
+        return bool(self.start < other.start)
