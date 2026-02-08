@@ -1,0 +1,25 @@
+[project]
+name = "event-times"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Jonathan Olsten", email = "jolsten@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=1.20.0",
+]
+
+[project.scripts]
+event-times = "event_times.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.151.5",
+    "pytest>=9.0.2",
+]
