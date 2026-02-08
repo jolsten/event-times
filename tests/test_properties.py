@@ -1,5 +1,5 @@
 """
-Property-based tests using hypothesis for onofftimes package.
+Property-based tests using hypothesis for events_from_state.
 """
 
 import numpy as np
@@ -7,7 +7,7 @@ import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from event_times import Event, on_off_times
+from event_times import Event, events_from_state
 
 
 # Custom strategies for datetime64 arrays
@@ -50,8 +50,8 @@ class TestPropertyBasedValidation:
         timestamps = base_time + np.arange(size) * np.timedelta64(1, "s")
         states = np.ones(size + 1, dtype=bool)
 
-        with pytest.raises(ValueError, match="Array length mismatch"):
-            on_off_times(timestamps, states)
+        with pytest.raises(ValueError, match="same length"):
+            events_from_state(timestamps, states, max_gap=60.0)
 
     @given(st.integers(min_value=2, max_value=50))
     @settings(max_examples=50)
@@ -62,8 +62,8 @@ class TestPropertyBasedValidation:
         timestamps = (base_time + np.arange(size) * np.timedelta64(1, "s"))[::-1]
         states = np.ones(size, dtype=bool)
 
-        with pytest.raises(ValueError, match="Timestamps must be sorted"):
-            on_off_times(timestamps, states)
+        with pytest.raises(ValueError, match="sorted"):
+            events_from_state(timestamps, states, max_gap=60.0)
 
 
 class TestPropertyBasedOutputStructure:
@@ -74,7 +74,7 @@ class TestPropertyBasedOutputStructure:
     def test_output_is_always_list_of_events(self, data):
         """Test that output is always a list of Event objects."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         assert isinstance(events, list)
         for event in events:
@@ -85,7 +85,7 @@ class TestPropertyBasedOutputStructure:
     def test_events_have_valid_temporal_ordering(self, data):
         """Test that event timestamps are temporally ordered."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
             # If both are not None, first_on should come before or equal to last_on
@@ -99,7 +99,6 @@ class TestPropertyBasedOutputStructure:
                 and event.last_on is not None
                 and event.first_off is not None
             ):
-                # Now Pylance knows these are not None
                 assert event.last_off < event.first_on
                 assert event.first_on <= event.last_on
                 assert event.last_on < event.first_off
@@ -109,7 +108,7 @@ class TestPropertyBasedOutputStructure:
     def test_event_timestamps_are_in_input_range(self, data):
         """Test that all event timestamps are from the input timestamps."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         timestamp_set = set(timestamps)
 
@@ -128,7 +127,7 @@ class TestPropertyBasedOutputStructure:
     def test_no_overlapping_events(self, data):
         """Test that events don't overlap in time."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         if len(events) <= 1:
             return  # Nothing to check
@@ -153,7 +152,7 @@ class TestPropertyBasedStateConsistency:
         timestamps = base_time + np.arange(size) * np.timedelta64(1, "s")
         states = np.zeros(size, dtype=bool)
 
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert events == []
 
     @given(st.integers(min_value=1, max_value=50))
@@ -164,7 +163,7 @@ class TestPropertyBasedStateConsistency:
         timestamps = base_time + np.arange(size) * np.timedelta64(1, "s")
         states = np.ones(size, dtype=bool)
 
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
         assert events[0].last_off is None
         assert events[0].first_off is None
@@ -178,7 +177,7 @@ class TestPropertyBasedStateConsistency:
         timestamps, states = data
         assume(np.any(states))  # Only test when there's at least one True
 
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) > 0
 
     @given(datetime_state_pairs(min_size=1, max_size=50))
@@ -186,7 +185,7 @@ class TestPropertyBasedStateConsistency:
     def test_first_on_corresponds_to_true_state(self, data):
         """Test that first_on timestamps correspond to True states."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
             if event.first_on is not None:
@@ -198,7 +197,7 @@ class TestPropertyBasedStateConsistency:
     def test_last_on_corresponds_to_true_state(self, data):
         """Test that last_on timestamps correspond to True states."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
             if event.last_on is not None:
@@ -210,7 +209,7 @@ class TestPropertyBasedStateConsistency:
     def test_last_off_corresponds_to_false_state(self, data):
         """Test that last_off timestamps correspond to False states."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
             if event.last_off is not None:
@@ -222,7 +221,7 @@ class TestPropertyBasedStateConsistency:
     def test_first_off_corresponds_to_false_state(self, data):
         """Test that first_off timestamps correspond to False states."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
             if event.first_off is not None:
@@ -238,7 +237,7 @@ class TestPropertyBasedEventProperties:
     def test_start_property_consistency(self, data):
         """Test that start property is consistent with its definition."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
             if event.first_on is not None:
@@ -251,7 +250,7 @@ class TestPropertyBasedEventProperties:
     def test_stop_property_consistency(self, data):
         """Test that stop property is consistent with its definition."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
             if event.last_on is not None:
@@ -264,7 +263,7 @@ class TestPropertyBasedEventProperties:
     def test_inner_interval_is_subset_of_outer(self, data):
         """Test that inner interval is within outer interval."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
             inner = event.inner_interval
@@ -277,7 +276,6 @@ class TestPropertyBasedEventProperties:
                 and inner[1] is not None
                 and outer[1] is not None
             ):
-                # Now Pylance knows these are not None
                 assert outer[0] <= inner[0]
                 assert inner[1] <= outer[1]
 
@@ -306,7 +304,7 @@ class TestPropertyBasedTimeGaps:
         states = np.ones(size, dtype=bool)
 
         # Use gap threshold smaller than the actual gap
-        events = on_off_times(timestamps, states, max_gap=float(gap_seconds))
+        events = events_from_state(timestamps, states, max_gap=float(gap_seconds))
 
         # Should split into at least 2 events
         assert len(events) >= 2
@@ -318,8 +316,8 @@ class TestPropertyBasedTimeGaps:
         timestamps, states = data
         assume(np.any(states))  # Need at least one True
 
-        events_small = on_off_times(timestamps, states, max_gap=1.0)
-        events_large = on_off_times(timestamps, states, max_gap=1000.0)
+        events_small = events_from_state(timestamps, states, max_gap=1.0)
+        events_large = events_from_state(timestamps, states, max_gap=1000.0)
 
         # Larger threshold should result in same or fewer events
         assert len(events_large) <= len(events_small)
@@ -333,7 +331,7 @@ class TestPropertyBasedInvariants:
     def test_total_on_samples_equals_sum_of_event_on_samples(self, data):
         """Test that total True states equals sum across all events."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         total_true = np.sum(states)
 
@@ -352,7 +350,7 @@ class TestPropertyBasedInvariants:
     def test_events_are_disjoint(self, data):
         """Test that events represent disjoint time periods."""
         timestamps, states = data
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
         # Collect all indices covered by each event
         event_indices = []

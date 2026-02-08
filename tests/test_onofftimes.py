@@ -1,15 +1,15 @@
 """
-Unit tests for onofftimes package.
+Unit tests for events_from_state function.
 """
 
 import numpy as np
 import pytest
 
-from event_times import Event, on_off_times
+from event_times import Event, events_from_state
 
 
 class TestEvent:
-    """Tests for the Event dataclass."""
+    """Tests for the Event Pydantic model."""
 
     def test_event_creation(self):
         """Test basic Event creation."""
@@ -26,9 +26,7 @@ class TestEvent:
 
     def test_event_validation_both_start_none(self):
         """Test that Event raises ValueError when both last_off and first_on are None."""
-        with pytest.raises(
-            ValueError, match="at least one of last_off or first_on must be not None"
-        ):
+        with pytest.raises(ValueError, match="at least one start time"):
             Event(
                 last_off=None,
                 first_on=None,
@@ -38,9 +36,7 @@ class TestEvent:
 
     def test_event_validation_both_stop_none(self):
         """Test that Event raises ValueError when both last_on and first_off are None."""
-        with pytest.raises(
-            ValueError, match="at least one of last_on or first_off must be not None"
-        ):
+        with pytest.raises(ValueError, match="at least one stop time"):
             Event(
                 last_off=np.datetime64("2024-01-01T00:00:00"),
                 first_on=np.datetime64("2024-01-01T00:01:00"),
@@ -138,10 +134,12 @@ class TestEvent:
 class TestInputValidation:
     """Tests for input validation."""
 
-    def test_empty_arrays_raise_error(self):
-        """Test that empty arrays raise ValueError."""
-        with pytest.raises(ValueError, match="Input arrays cannot be empty"):
-            on_off_times(np.array([], dtype="datetime64"), np.array([], dtype=bool))
+    def test_empty_arrays_return_empty_list(self):
+        """Test that empty arrays return an empty list."""
+        result = events_from_state(
+            np.array([], dtype="datetime64"), np.array([], dtype=bool), max_gap=60.0
+        )
+        assert result == []
 
     def test_mismatched_lengths_raise_error(self):
         """Test that mismatched array lengths raise ValueError."""
@@ -149,8 +147,8 @@ class TestInputValidation:
             ["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64"
         )
         states = np.array([True])
-        with pytest.raises(ValueError, match="Array length mismatch"):
-            on_off_times(timestamps, states)
+        with pytest.raises(ValueError, match="same length"):
+            events_from_state(timestamps, states, max_gap=60.0)
 
     def test_unsorted_timestamps_raise_error(self):
         """Test that unsorted timestamps raise ValueError."""
@@ -159,14 +157,14 @@ class TestInputValidation:
             dtype="datetime64",
         )
         states = np.array([True, False, True])
-        with pytest.raises(ValueError, match="Timestamps must be sorted"):
-            on_off_times(timestamps, states)
+        with pytest.raises(ValueError, match="sorted"):
+            events_from_state(timestamps, states, max_gap=60.0)
 
     def test_single_element_arrays(self):
         """Test handling of single-element arrays."""
         timestamps = np.array(["2024-01-01T00:00:00"], dtype="datetime64")
         states = np.array([True])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
         assert events[0].last_off is None
         assert events[0].first_on == timestamps[0]
@@ -175,7 +173,7 @@ class TestInputValidation:
 
 
 class TestBasicFunctionality:
-    """Tests for basic on_off_times functionality."""
+    """Tests for basic events_from_state functionality."""
 
     def test_all_false_returns_empty_list(self):
         """Test that all False states return an empty list."""
@@ -184,7 +182,7 @@ class TestBasicFunctionality:
             dtype="datetime64",
         )
         states = np.array([False, False, False])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert events == []
 
     def test_all_true_returns_single_event(self):
@@ -194,7 +192,7 @@ class TestBasicFunctionality:
             dtype="datetime64",
         )
         states = np.array([True, True, True])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
         assert events[0].last_off is None
         assert events[0].first_on == timestamps[0]
@@ -208,7 +206,7 @@ class TestBasicFunctionality:
             dtype="datetime64",
         )
         states = np.array([False, True, False])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
         assert events[0].last_off == timestamps[0]
         assert events[0].first_on == timestamps[1]
@@ -222,7 +220,7 @@ class TestBasicFunctionality:
             dtype="datetime64",
         )
         states = np.array([True, True, False])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
         assert events[0].last_off is None
         assert events[0].first_on == timestamps[0]
@@ -236,7 +234,7 @@ class TestBasicFunctionality:
             dtype="datetime64",
         )
         states = np.array([False, True, True])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
         assert events[0].last_off == timestamps[0]
         assert events[0].first_on == timestamps[1]
@@ -256,7 +254,7 @@ class TestBasicFunctionality:
             dtype="datetime64",
         )
         states = np.array([False, True, False, True, False])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 2
 
         # First event
@@ -287,23 +285,23 @@ class TestTimeGapHandling:
             dtype="datetime64",
         )
         states = np.array([True, True, True, True])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 2
 
-        # First event
+        # First event: starts at series start (last_off=None), split by gap (first_off=None)
         assert events[0].last_off is None
         assert events[0].first_on == timestamps[0]
         assert events[0].last_on == timestamps[1]
         assert events[0].first_off is None
 
-        # Second event
+        # Second event: after gap (last_off=None), ends at series end (first_off=None)
         assert events[1].last_off is None
         assert events[1].first_on == timestamps[2]
         assert events[1].last_on == timestamps[3]
         assert events[1].first_off is None
 
     def test_custom_max_time_gap(self):
-        """Test using a custom max_time_gap parameter."""
+        """Test using a custom max_gap parameter."""
         timestamps = np.array(
             [
                 "2024-01-01T00:00:00",
@@ -316,15 +314,15 @@ class TestTimeGapHandling:
         states = np.array([True, True, True, True])
 
         # With 3-minute threshold, should be one event
-        events = on_off_times(timestamps, states, max_gap=3 * 60.0)
+        events = events_from_state(timestamps, states, max_gap=3 * 60.0)
         assert len(events) == 1
 
         # With 1-minute threshold, should be two events
-        events = on_off_times(timestamps, states, max_gap=1 * 60.0)
+        events = events_from_state(timestamps, states, max_gap=1 * 60.0)
         assert len(events) == 2
 
-    def test_gap_during_off_period_does_not_affect_events(self):
-        """Test that gaps during off periods don't split events."""
+    def test_gap_during_off_period(self):
+        """Test that a gap during off period creates two segments."""
         timestamps = np.array(
             [
                 "2024-01-01T00:00:00",
@@ -335,12 +333,13 @@ class TestTimeGapHandling:
             dtype="datetime64",
         )
         states = np.array([True, False, False, True])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
 
-        # Should be two separate events due to False states, not gap
         assert len(events) == 2
         assert events[0].first_on == timestamps[0]
         assert events[0].first_off == timestamps[1]
+        # After the gap, the off sample within the new segment is used as last_off
+        assert events[1].last_off == timestamps[2]
         assert events[1].first_on == timestamps[3]
         assert events[1].first_off is None
 
@@ -354,12 +353,12 @@ class TestTimeGapHandling:
 
         # Gap is exactly 60 seconds (at threshold, not exceeded)
         # Using > comparison, so 60s gap with 60s threshold should NOT split
-        events = on_off_times(timestamps, states, max_gap=60.0)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
 
         # Gap is 60 seconds but threshold is 59 seconds (gap exceeds threshold)
         # Both gaps exceed threshold, so we get 3 separate events
-        events = on_off_times(timestamps, states, max_gap=59.0)
+        events = events_from_state(timestamps, states, max_gap=59.0)
         assert len(events) == 3  # Each timestamp becomes its own event
 
     def test_threshold_comparison_is_strict_greater_than(self):
@@ -372,19 +371,19 @@ class TestTimeGapHandling:
         states = np.array([True, True, True])
 
         # With threshold = 60s, gaps of exactly 60s should NOT cause splits
-        events = on_off_times(timestamps, states, max_gap=60.0)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1, "Gaps equal to threshold should not split events"
 
         # With threshold = 61s, gaps of 60s should NOT cause splits
-        events = on_off_times(timestamps, states, max_gap=61.0)
+        events = events_from_state(timestamps, states, max_gap=61.0)
         assert len(events) == 1
 
         # With threshold = 59s, gaps of 60s SHOULD cause splits
-        events = on_off_times(timestamps, states, max_gap=59.0)
+        events = events_from_state(timestamps, states, max_gap=59.0)
         assert len(events) == 3, "Gaps exceeding threshold should split events"
 
     def test_gap_split_events_have_none_boundaries(self):
-        """Test that events split by time gaps (not state changes) have None for boundaries."""
+        """Test that events split by time gaps have None for gap-side boundaries."""
         timestamps = np.array(
             [
                 "2024-01-01T00:00:00",
@@ -396,26 +395,17 @@ class TestTimeGapHandling:
         )
         states = np.array([True, True, True, True])
 
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 2
 
         # First event: starts at beginning (last_off=None), split by gap (first_off=None)
-        assert events[0].last_off is None, (
-            "Series starts on, so last_off should be None"
-        )
-        assert events[0].first_off is None, (
-            "Event split by gap, not state change, so first_off should be None"
-        )
+        assert events[0].last_off is None
+        assert events[0].first_off is None
 
         # Second event: split by gap (last_off=None), ends at end (first_off=None)
-        assert events[1].last_off is None, (
-            "Event split by gap, not state change, so last_off should be None"
-        )
-        assert events[1].first_off is None, (
-            "Series ends on, so first_off should be None"
-        )
+        assert events[1].last_off is None
+        assert events[1].first_off is None
 
-        # Both events should have valid on timestamps
         assert events[0].first_on == timestamps[0]
         assert events[0].last_on == timestamps[1]
         assert events[1].first_on == timestamps[2]
@@ -438,10 +428,10 @@ class TestEdgeCases:
             dtype="datetime64",
         )
         states = np.array([True, False, True, False, True])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 3
 
-        for i, event in enumerate(events):
+        for event in events:
             assert event.first_on == event.last_on  # Single-timestamp events
 
     def test_long_on_period(self):
@@ -450,7 +440,7 @@ class TestEdgeCases:
             [f"2024-01-01T00:{i:02d}:00" for i in range(10)], dtype="datetime64"
         )
         states = np.array([False] + [True] * 8 + [False])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
         assert events[0].first_on == timestamps[1]
         assert events[0].last_on == timestamps[8]
@@ -462,7 +452,7 @@ class TestEdgeCases:
             dtype="datetime64",
         )
         states = np.array([False, True, False])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
         assert events[0].first_on == events[0].last_on == timestamps[1]
 
@@ -478,7 +468,7 @@ class TestEdgeCases:
             dtype="datetime64",
         )
         states = np.array([True, True, True, False])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
         assert events[0].last_off is None
         assert events[0].first_on == timestamps[0]
@@ -497,7 +487,7 @@ class TestEdgeCases:
             dtype="datetime64",
         )
         states = np.array([False, True, True, True])
-        events = on_off_times(timestamps, states)
+        events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
         assert events[0].last_off == timestamps[0]
         assert events[0].first_on == timestamps[1]
@@ -523,7 +513,7 @@ class TestComplexScenarios:
             dtype="datetime64",
         )
         states = np.array([False, True, True, False, True, True, False])
-        events = on_off_times(timestamps, states, max_gap=5 * 60.0)
+        events = events_from_state(timestamps, states, max_gap=5 * 60.0)
 
         assert len(events) == 2
 
@@ -533,8 +523,8 @@ class TestComplexScenarios:
         assert events[0].last_on == timestamps[2]
         assert events[0].first_off == timestamps[3]
 
-        # Second event (after gap)
-        assert events[1].last_off == timestamps[3]
+        # Second event (after gap — last_off is None because segment starts on)
+        assert events[1].last_off is None
         assert events[1].first_on == timestamps[4]
         assert events[1].last_on == timestamps[5]
         assert events[1].first_off == timestamps[6]
@@ -544,7 +534,7 @@ class TestComplexScenarios:
         base = np.datetime64("2024-01-01T00:00:00.000")
         timestamps = base + np.arange(5) * np.timedelta64(100, "ms")
         states = np.array([False, True, True, True, False])
-        events = on_off_times(
+        events = events_from_state(
             timestamps, states, max_gap=0.2
         )  # 200 milliseconds = 0.2 seconds
 
