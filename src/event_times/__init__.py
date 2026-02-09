@@ -7,6 +7,7 @@ into a summary of start and stop times for each event.
 
 from event_times.core import events_from_state
 from event_times.event import Event
+from event_times.state import OnOffStateProcessor
 
 __version__ = "0.1.0"
-__all__ = ["Event", "events_from_state"]
+__all__ = ["Event", "OnOffStateProcessor", "events_from_state"]

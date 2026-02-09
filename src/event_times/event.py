@@ -364,13 +364,13 @@ class Event(BaseModel):
         duration_ns = self.stop - self.start
         return self.start + duration_ns / 2
 
-    def is_point_event(self, threshold: float = 1e-6) -> bool:
+    def is_point_event(self, threshold: float = 100e-6) -> bool:
         """Check if this is effectively a point event (zero or near-zero duration).
 
         Args:
             threshold: Duration threshold in seconds. Events with duration less than
                 or equal to this value are considered point events.
-                Default is 1 microsecond (1e-6).
+                Default is 100 microseconds (100e-6).
 
         Returns:
             True if duration is less than or equal to the threshold.
@@ -475,20 +475,42 @@ class Event(BaseModel):
             and the gap between them exceeds max_gap, or if there's a definite
             OFF state between the events.
         """
+        # Determine temporal order
+        if self.start <= other.start:
+            first, second = self, other
+        else:
+            first, second = other, self
+
         # Check for contradictory outer boundaries
         # If an outer boundary (definite OFF) falls within the other event's
         # inner interval (definite ON), the events are contradictory
-        if self.first_off is not None and other.first_on is not None and other.last_on is not None:
-            if other.first_on <= self.first_off <= other.last_on:
+        if (
+            first.first_off is not None
+            and second.first_on is not None
+            and second.last_on is not None
+        ):
+            if second.first_on <= first.first_off <= second.last_on:
                 return None
-        if self.last_off is not None and other.first_on is not None and other.last_on is not None:
-            if other.first_on <= self.last_off <= other.last_on:
+        if (
+            first.last_off is not None
+            and second.first_on is not None
+            and second.last_on is not None
+        ):
+            if second.first_on <= first.last_off <= second.last_on:
                 return None
-        if other.first_off is not None and self.first_on is not None and self.last_on is not None:
-            if self.first_on <= other.first_off <= self.last_on:
+        if (
+            second.first_off is not None
+            and first.first_on is not None
+            and first.last_on is not None
+        ):
+            if first.first_on <= second.first_off <= first.last_on:
                 return None
-        if other.last_off is not None and self.first_on is not None and self.last_on is not None:
-            if self.first_on <= other.last_off <= self.last_on:
+        if (
+            second.last_off is not None
+            and first.first_on is not None
+            and first.last_on is not None
+        ):
+            if first.first_on <= second.last_off <= first.last_on:
                 return None
 
         # Check if events overlap or are within max_gap
@@ -496,12 +518,6 @@ class Event(BaseModel):
             gap = self.gap_between(other)
             if gap > max_gap:
                 return None
-
-            # Determine temporal order
-            if self.start <= other.start:
-                first, second = self, other
-            else:
-                first, second = other, self
 
             # Don't merge if there's a definite OFF between events
             # first.first_off means we know the state was OFF after first event
@@ -745,19 +761,9 @@ class Event(BaseModel):
         )
         end_dt_same_day = validate_datetime(end_dt_same_day_obj)
 
-        # If end is before or equal to start, assume it's the next day
-        if end_dt_same_day <= start_dt:
-            next_day_obj = start_dt_obj + datetime.timedelta(days=1)
-            end_dt_obj = datetime.datetime(
-                next_day_obj.year,
-                next_day_obj.month,
-                next_day_obj.day,
-                end_h,
-                end_m,
-                end_s,
-                end_us,
-            )
-            end_dt = validate_datetime(end_dt_obj)
+        # If end is before start, assume it's the next day
+        if end_dt_same_day < start_dt:
+            end_dt = end_dt_same_day + np.timedelta64(1, "D")
         else:
             end_dt = end_dt_same_day
 

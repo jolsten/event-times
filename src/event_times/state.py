@@ -8,7 +8,7 @@ import numpy.typing as npt
 from event_times.event import Event
 
 
-class StateProcessor:
+class OnOffStateProcessor:
     """Stateful batch processor for converting boolean state time series into Events.
 
     Processes batches of (time, state) data via ``__call__``.  Events that span
@@ -83,9 +83,7 @@ class StateProcessor:
                 if is_large_gap:
                     self._close_pending(first_off=None)
                 elif not state[0]:
-                    self._close_pending(
-                        first_off=cast(np.datetime64, time[0])
-                    )
+                    self._close_pending(first_off=cast(np.datetime64, time[0]))
                 # else: small gap & state[0] is True → pending stays open
         else:
             is_large_gap = True  # no previous batch → treat as discontinuity
@@ -128,9 +126,7 @@ class StateProcessor:
                 if starts_at_edge:
                     if self._pending is not None:
                         # Continue the pending event
-                        self._pending["last_on"] = cast(
-                            np.datetime64, seg_time[re]
-                        )
+                        self._pending["last_on"] = cast(np.datetime64, seg_time[re])
                         if not ends_at_edge:
                             self._close_pending(
                                 first_off=cast(np.datetime64, seg_time[re + 1])

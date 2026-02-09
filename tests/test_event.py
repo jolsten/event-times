@@ -1,6 +1,7 @@
 """Comprehensive test suite for Event class."""
 
 import datetime
+from typing import Optional
 
 import numpy as np
 import pytest
@@ -71,57 +72,54 @@ class TestEventCreation:
         assert event.duration == 3600.0
 
 
-class TestEventValidation:
+@pytest.mark.parametrize(
+    "times, exc, text",
+    [
+        (  # lacks start time
+            (None, None, "2024-01-01T11:00:00", None),
+            ValueError,
+            "at least one start time",
+        ),
+        (  # lacks stop time
+            (None, "2024-01-01T10:00:00", None, None),
+            ValueError,
+            "at least one stop time",
+        ),
+        (  # first_on after last_on (negative duration)
+            (None, "2024-01-01T11:00:00", "2024-01-01T10:00:00", None),
+            ValueError,
+            "first_on must precede or equal last_on",
+        ),
+        (  # last_off after first_on
+            ("2024-01-01T10:30:00", "2024-01-01T10:00:00", "2024-01-01T11:00:00", None),
+            ValueError,
+            "last_off must precede or equal first_on",
+        ),
+        (  # last_on after first_off
+            (None, "2024-01-01T10:00:00", "2024-01-01T11:30:00", "2024-01-01T11:00:00"),
+            ValueError,
+            "last_on must precede or equal first_off",
+        ),
+        (  # Invalid datetime string
+            (None, "not a date", "2024-01-01T11:30:00", None),
+            ValueError,
+            None,
+        ),
+    ],
+)
+class TestEventValidationFails:
     """Test Event validation rules."""
 
-    def test_missing_start_times_raises_error(self):
-        """Test that event without start times raises ValueError."""
-        with pytest.raises(ValueError, match="at least one start time"):
-            Event(last_on="2024-01-01T11:00:00")
+    def test_validation(self, times: tuple[str, ...], exc, text: Optional[str]):
+        last_off, first_on, last_on, first_off = times
 
-    def test_missing_stop_times_raises_error(self):
-        """Test that event without stop times raises ValueError."""
-        with pytest.raises(ValueError, match="at least one stop time"):
-            Event(first_on="2024-01-01T10:00:00")
-
-    def test_negative_duration_raises_error(self):
-        """Test that stop before start raises ValueError."""
-        with pytest.raises(ValueError, match="first_on must precede or equal last_on"):
+        with pytest.raises(exc, match=text):
             Event(
-                first_on="2024-01-01T11:00:00",
-                last_on="2024-01-01T10:00:00",
+                last_off=last_off,
+                first_on=first_on,
+                last_on=last_on,
+                first_off=first_off,
             )
-
-    def test_last_off_after_first_on_raises_error(self):
-        """Test that last_off > first_on raises ValueError."""
-        with pytest.raises(ValueError, match="last_off must precede or equal first_on"):
-            Event(
-                last_off="2024-01-01T10:30:00",
-                first_on="2024-01-01T10:00:00",
-                last_on="2024-01-01T11:00:00",
-            )
-
-    def test_first_on_after_last_on_raises_error(self):
-        """Test that first_on > last_on raises ValueError."""
-        with pytest.raises(ValueError, match="first_on must precede or equal last_on"):
-            Event(
-                first_on="2024-01-01T11:00:00",
-                last_on="2024-01-01T10:00:00",
-            )
-
-    def test_last_on_after_first_off_raises_error(self):
-        """Test that last_on > first_off raises ValueError."""
-        with pytest.raises(ValueError, match="last_on must precede or equal first_off"):
-            Event(
-                first_on="2024-01-01T10:00:00",
-                last_on="2024-01-01T11:30:00",
-                first_off="2024-01-01T11:00:00",
-            )
-
-    def test_invalid_datetime_string_raises_error(self):
-        """Test that invalid datetime string raises error."""
-        with pytest.raises((ValueError, TypeError)):
-            Event(first_on="not a date", last_on="2024-01-01T11:00:00")
 
 
 class TestEventProperties:
@@ -1037,14 +1035,14 @@ class TestEventFromMerlin:
         assert event.last_on == expected_end
 
     def test_from_merlin_same_time_wraps_to_next_day(self):
-        """Test from_merlin with same start and end time wraps to next day."""
+        """Test from_merlin with same start and end time does not wrap to next day."""
         event = Event.from_merlin(
             "2024-01-01",
             "10:00:00",
             "10:00:00",
         )
-        # Since end equals start, it should wrap to next day
-        assert event.duration == 86400.0  # 24 hours
+        # Since end equals start, it should not wrap to next day
+        assert event.duration == 0.0  # 0 duration event
 
     def test_from_merlin_leap_year(self):
         """Test from_merlin spanning midnight on leap year."""

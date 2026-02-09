@@ -3,13 +3,14 @@
 from typing import Optional, cast
 
 import numpy as np
+import numpy.typing as npt
 
 from event_times.event import Event
 
 
 def events_from_state(
-    time: np.ndarray,
-    state: np.ndarray,
+    time: npt.NDArray[np.datetime64],
+    state: npt.NDArray[np.bool_],
     max_gap: float = 60.0,
 ) -> list[Event]:
     """Convert time series state data into a list of Event objects.
@@ -48,6 +49,7 @@ def events_from_state(
     if len(time) > 1 and not np.all(time[1:] >= time[:-1]):
         raise ValueError("time must be sorted in ascending order")
 
+    # No True states -> no events
     if not np.any(state):
         return []
 
@@ -75,8 +77,12 @@ def events_from_state(
         # Pad with False on both sides to capture runs at segment boundaries.
         padded = np.concatenate([[False], seg_state, [False]])
         d = np.diff(padded.astype(np.int8))
-        run_starts = np.where(d == 1)[0]  # local index of first on-sample
-        run_ends = np.where(d == -1)[0] - 1  # local index of last on-sample
+
+        # local index of first on-sample (sample after the false -> true transition)
+        run_starts = np.where(d == 1)[0]
+
+        # local index of last on-sample (sample before the true -> false transition)
+        run_ends = np.where(d == -1)[0] - 1
 
         seg_len = len(seg_time)
         for rs, re in zip(run_starts, run_ends):

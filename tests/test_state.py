@@ -1,9 +1,9 @@
-"""Unit tests for StateProcessor."""
+"""Unit tests for OnOffStateProcessor."""
 
 import numpy as np
 import pytest
 
-from event_times import StateProcessor, events_from_state
+from event_times import OnOffStateProcessor, events_from_state
 
 
 def _ts(spec: str) -> np.datetime64:
@@ -15,20 +15,22 @@ class TestInputValidation:
     """Tests for input validation."""
 
     def test_empty_array_is_noop(self):
-        proc = StateProcessor()
+        proc = OnOffStateProcessor()
         proc(np.array([], dtype="datetime64"), np.array([], dtype=bool))
         proc.finalize()
         assert proc.get_events() == []
 
     def test_mismatched_lengths_raise_error(self):
-        proc = StateProcessor()
-        time = np.array(["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64")
+        proc = OnOffStateProcessor()
+        time = np.array(
+            ["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64"
+        )
         state = np.array([True])
         with pytest.raises(ValueError, match="same length"):
             proc(time, state)
 
     def test_unsorted_timestamps_raise_error(self):
-        proc = StateProcessor()
+        proc = OnOffStateProcessor()
         time = np.array(
             ["2024-01-01T00:02:00", "2024-01-01T00:01:00"], dtype="datetime64"
         )
@@ -47,7 +49,7 @@ class TestSingleBatchEquivalence:
         )
         state = np.array([False, False, False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time, state)
         proc.finalize()
         assert proc.get_events() == []
@@ -60,7 +62,7 @@ class TestSingleBatchEquivalence:
         state = np.array([True, True, True])
 
         expected = events_from_state(time, state, max_gap=60.0)
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time, state)
         proc.finalize()
         result = proc.get_events()
@@ -86,7 +88,7 @@ class TestSingleBatchEquivalence:
         state = np.array([False, True, True, True, False])
 
         expected = events_from_state(time, state, max_gap=60.0)
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time, state)
         proc.finalize()
         result = proc.get_events()
@@ -113,7 +115,7 @@ class TestSingleBatchEquivalence:
         state = np.array([False, True, False, False, True, True, False])
 
         expected = events_from_state(time, state, max_gap=60.0)
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time, state)
         proc.finalize()
         result = proc.get_events()
@@ -138,7 +140,7 @@ class TestSingleBatchEquivalence:
         state = np.array([True, True, True, True])
 
         expected = events_from_state(time, state, max_gap=120.0)
-        proc = StateProcessor(max_gap=120.0)
+        proc = OnOffStateProcessor(max_gap=120.0)
         proc(time, state)
         proc.finalize()
         result = proc.get_events()
@@ -166,7 +168,7 @@ class TestCrossBatchContinuation:
         )
         state2 = np.array([True, False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time1, state1)
         proc(time2, state2)
         proc.finalize()
@@ -180,16 +182,22 @@ class TestCrossBatchContinuation:
 
     def test_event_spans_three_batches(self):
         """Event continues across three consecutive batches."""
-        time1 = np.array(["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64")
+        time1 = np.array(
+            ["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64"
+        )
         state1 = np.array([False, True])
 
-        time2 = np.array(["2024-01-01T00:02:00", "2024-01-01T00:03:00"], dtype="datetime64")
+        time2 = np.array(
+            ["2024-01-01T00:02:00", "2024-01-01T00:03:00"], dtype="datetime64"
+        )
         state2 = np.array([True, True])
 
-        time3 = np.array(["2024-01-01T00:04:00", "2024-01-01T00:05:00"], dtype="datetime64")
+        time3 = np.array(
+            ["2024-01-01T00:04:00", "2024-01-01T00:05:00"], dtype="datetime64"
+        )
         state3 = np.array([True, False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time1, state1)
         proc(time2, state2)
         proc(time3, state3)
@@ -214,7 +222,7 @@ class TestCrossBatchContinuation:
         )
         state2 = np.array([False, False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time1, state1)
         proc(time2, state2)
         proc.finalize()
@@ -238,7 +246,7 @@ class TestCrossBatchContinuation:
         )
         state2 = np.array([True, False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time1, state1)
         proc(time2, state2)
         proc.finalize()
@@ -272,7 +280,7 @@ class TestCrossBatchLastOff:
         )
         state2 = np.array([True, False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time1, state1)
         proc(time2, state2)
         proc.finalize()
@@ -292,7 +300,7 @@ class TestCrossBatchLastOff:
         )
         state2 = np.array([True, False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time1, state1)
         proc(time2, state2)
         proc.finalize()
@@ -312,7 +320,9 @@ class TestEventProperties:
         )
         state = np.array([False, True, False])
 
-        proc = StateProcessor(description="test event", color="#ff0000", max_gap=60.0)
+        proc = OnOffStateProcessor(
+            description="test event", color="#ff0000", max_gap=60.0
+        )
         proc(time, state)
         proc.finalize()
         result = proc.get_events()
@@ -322,13 +332,17 @@ class TestEventProperties:
         assert result[0].color == "#ff0000"
 
     def test_properties_on_cross_batch_event(self):
-        time1 = np.array(["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64")
+        time1 = np.array(
+            ["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64"
+        )
         state1 = np.array([False, True])
 
-        time2 = np.array(["2024-01-01T00:02:00", "2024-01-01T00:03:00"], dtype="datetime64")
+        time2 = np.array(
+            ["2024-01-01T00:02:00", "2024-01-01T00:03:00"], dtype="datetime64"
+        )
         state2 = np.array([True, False])
 
-        proc = StateProcessor(description="spanning", color="blue", max_gap=60.0)
+        proc = OnOffStateProcessor(description="spanning", color="blue", max_gap=60.0)
         proc(time1, state1)
         proc(time2, state2)
         proc.finalize()
@@ -345,7 +359,7 @@ class TestEventProperties:
         )
         state = np.array([False, True, False])
 
-        proc = StateProcessor()
+        proc = OnOffStateProcessor()
         proc(time, state)
         proc.finalize()
         result = proc.get_events()
@@ -365,7 +379,7 @@ class TestDrainSemantics:
         )
         state = np.array([False, True, False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time, state)
         proc.finalize()
 
@@ -389,7 +403,7 @@ class TestDrainSemantics:
         )
         state2 = np.array([False, True, False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time1, state1)
         batch1_events = proc.get_events()
 
@@ -406,7 +420,7 @@ class TestFinalize:
 
     def test_finalize_no_pending(self):
         """Finalize with no pending event is a no-op."""
-        proc = StateProcessor()
+        proc = OnOffStateProcessor()
         proc.finalize()  # should not raise
         assert proc.get_events() == []
 
@@ -416,7 +430,7 @@ class TestFinalize:
         )
         state = np.array([False, True])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time, state)
 
         # Before finalize, the event is pending (not in completed buffer)
@@ -429,15 +443,19 @@ class TestFinalize:
 
     def test_processing_after_finalize(self):
         """Processing more batches after finalize works correctly."""
-        time1 = np.array(["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64")
+        time1 = np.array(
+            ["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64"
+        )
         state1 = np.array([False, True])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time1, state1)
         proc.finalize()
         events1 = proc.get_events()
 
-        time2 = np.array(["2024-01-01T00:02:00", "2024-01-01T00:03:00"], dtype="datetime64")
+        time2 = np.array(
+            ["2024-01-01T00:02:00", "2024-01-01T00:03:00"], dtype="datetime64"
+        )
         state2 = np.array([True, False])
 
         proc(time2, state2)
@@ -455,7 +473,7 @@ class TestEdgeCases:
         time = np.array(["2024-01-01T00:00:00"], dtype="datetime64")
         state = np.array([True])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time, state)
         proc.finalize()
         result = proc.get_events()
@@ -470,20 +488,24 @@ class TestEdgeCases:
         time = np.array(["2024-01-01T00:00:00"], dtype="datetime64")
         state = np.array([False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time, state)
         proc.finalize()
         assert proc.get_events() == []
 
     def test_all_false_batch_closes_pending(self):
         """All-False batch after a pending event closes it."""
-        time1 = np.array(["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64")
+        time1 = np.array(
+            ["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64"
+        )
         state1 = np.array([True, True])
 
-        time2 = np.array(["2024-01-01T00:02:00", "2024-01-01T00:03:00"], dtype="datetime64")
+        time2 = np.array(
+            ["2024-01-01T00:02:00", "2024-01-01T00:03:00"], dtype="datetime64"
+        )
         state2 = np.array([False, False])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time1, state1)
         proc(time2, state2)
         proc.finalize()
@@ -494,7 +516,7 @@ class TestEdgeCases:
 
     def test_alternating_single_sample_batches(self):
         """Each batch is a single sample, alternating True/False."""
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
 
         proc(np.array(["2024-01-01T00:00:00"], dtype="datetime64"), np.array([False]))
         proc(np.array(["2024-01-01T00:01:00"], dtype="datetime64"), np.array([True]))
@@ -518,14 +540,18 @@ class TestEdgeCases:
 
     def test_empty_batch_between_batches(self):
         """Empty batch does not disrupt state tracking."""
-        time1 = np.array(["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64")
+        time1 = np.array(
+            ["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64"
+        )
         state1 = np.array([False, True])
 
-        proc = StateProcessor(max_gap=60.0)
+        proc = OnOffStateProcessor(max_gap=60.0)
         proc(time1, state1)
         proc(np.array([], dtype="datetime64"), np.array([], dtype=bool))
 
-        time2 = np.array(["2024-01-01T00:02:00", "2024-01-01T00:03:00"], dtype="datetime64")
+        time2 = np.array(
+            ["2024-01-01T00:02:00", "2024-01-01T00:03:00"], dtype="datetime64"
+        )
         state2 = np.array([True, False])
         proc(time2, state2)
         proc.finalize()
