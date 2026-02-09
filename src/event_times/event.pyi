@@ -88,6 +88,7 @@ class Event(BaseModel):
         other: Event,
         description: Optional[str] = None,
         color: Optional[str] = None,
+        max_gap: float = 0.0,
     ) -> Optional[Event]: ...
     
     @classmethod

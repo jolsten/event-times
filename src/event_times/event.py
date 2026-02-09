@@ -457,20 +457,57 @@ class Event(BaseModel):
         other: "Event",
         description: Optional[str] = None,
         color: Optional[str] = None,
+        max_gap: float = 0.0,
     ) -> Optional["Event"]:
-        """Merge this event with another overlapping event.
+        """Merge this event with another overlapping or adjacent event.
 
         Args:
             other: Another Event instance to merge with.
             description: Custom description for merged event. If None, combines
                 both descriptions.
             color: Color for merged event. If None, uses this event's color.
+            max_gap: Maximum gap in seconds between events to allow merging.
+                If 0 (default), only overlapping events are merged. If > 0,
+                events separated by up to max_gap seconds can be merged.
 
         Returns:
-            A new Event representing the union, or None if events don't overlap.
+            A new Event representing the union, or None if events don't overlap
+            and the gap between them exceeds max_gap, or if there's a definite
+            OFF state between the events.
         """
+        # Check for contradictory outer boundaries
+        # If an outer boundary (definite OFF) falls within the other event's
+        # inner interval (definite ON), the events are contradictory
+        if self.first_off is not None and other.first_on is not None and other.last_on is not None:
+            if other.first_on <= self.first_off <= other.last_on:
+                return None
+        if self.last_off is not None and other.first_on is not None and other.last_on is not None:
+            if other.first_on <= self.last_off <= other.last_on:
+                return None
+        if other.first_off is not None and self.first_on is not None and self.last_on is not None:
+            if self.first_on <= other.first_off <= self.last_on:
+                return None
+        if other.last_off is not None and self.first_on is not None and self.last_on is not None:
+            if self.first_on <= other.last_off <= self.last_on:
+                return None
+
+        # Check if events overlap or are within max_gap
         if not self.overlaps(other):
-            return None
+            gap = self.gap_between(other)
+            if gap > max_gap:
+                return None
+
+            # Determine temporal order
+            if self.start <= other.start:
+                first, second = self, other
+            else:
+                first, second = other, self
+
+            # Don't merge if there's a definite OFF between events
+            # first.first_off means we know the state was OFF after first event
+            # second.last_off means we know the state was OFF before second event
+            if first.first_off is not None or second.last_off is not None:
+                return None
 
         if description is not None:
             merged_description = description
@@ -482,19 +519,38 @@ class Event(BaseModel):
             merged_description = None
         merged_color = color if color is not None else self.color
 
-        return Event(
-            last_off=min(t for t in [self.last_off, other.last_off] if t is not None)
-            if self.last_off is not None or other.last_off is not None
-            else None,
-            first_on=min(t for t in [self.first_on, other.first_on] if t is not None)
+        # Compute merged inner interval
+        merged_first_on = (
+            min(t for t in [self.first_on, other.first_on] if t is not None)
             if self.first_on is not None or other.first_on is not None
-            else None,
-            last_on=max(t for t in [self.last_on, other.last_on] if t is not None)
+            else None
+        )
+        merged_last_on = (
+            max(t for t in [self.last_on, other.last_on] if t is not None)
             if self.last_on is not None or other.last_on is not None
-            else None,
-            first_off=max(t for t in [self.first_off, other.first_off] if t is not None)
-            if self.first_off is not None or other.first_off is not None
-            else None,
+            else None
+        )
+
+        # Only use outer boundaries that are actually outside the merged inner interval
+        valid_last_offs = [
+            t
+            for t in [self.last_off, other.last_off]
+            if t is not None and (merged_first_on is None or t < merged_first_on)
+        ]
+        merged_last_off = min(valid_last_offs) if valid_last_offs else None
+
+        valid_first_offs = [
+            t
+            for t in [self.first_off, other.first_off]
+            if t is not None and (merged_last_on is None or t > merged_last_on)
+        ]
+        merged_first_off = max(valid_first_offs) if valid_first_offs else None
+
+        return Event(
+            last_off=merged_last_off,
+            first_on=merged_first_on,
+            last_on=merged_last_on,
+            first_off=merged_first_off,
             description=merged_description,
             color=merged_color,
         )
@@ -598,9 +654,25 @@ class Event(BaseModel):
             raise ValueError("Duration must be non-negative")
 
         start_dt = validate_datetime(start)
-        duration_td = np.timedelta64(
-            round(duration * _NS_PER_UNIT[duration_units]), "ns"
-        )
+
+        # Convert to nanoseconds with overflow protection
+        duration_ns = duration * _NS_PER_UNIT[duration_units]
+
+        # Check for overflow (int64 max is ~9.2e18, giving ~292 years in ns)
+        MAX_NS = 2**63 - 1  # int64 max
+        if duration_ns > MAX_NS:
+            raise ValueError(
+                f"Duration too large: {duration} {duration_units} exceeds ~292 year limit"
+            )
+
+        # Check for sub-nanosecond precision (would be truncated to 0 or 1)
+        if 0 < duration_ns < 1:
+            raise ValueError(
+                f"Duration too small: {duration} {duration_units} is sub-nanosecond "
+                f"and would be truncated to zero"
+            )
+
+        duration_td = np.timedelta64(round(duration_ns), "ns")
         stop_dt = start_dt + duration_td
 
         if interval_type == "inner":

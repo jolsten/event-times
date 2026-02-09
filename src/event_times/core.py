@@ -10,7 +10,7 @@ from event_times.event import Event
 def events_from_state(
     time: np.ndarray,
     state: np.ndarray,
-    max_gap: float,
+    max_gap: float = 60.0,
 ) -> list[Event]:
     """Convert time series state data into a list of Event objects.
 
@@ -75,8 +75,8 @@ def events_from_state(
         # Pad with False on both sides to capture runs at segment boundaries.
         padded = np.concatenate([[False], seg_state, [False]])
         d = np.diff(padded.astype(np.int8))
-        run_starts = np.where(d == 1)[0]       # local index of first on-sample
-        run_ends = np.where(d == -1)[0] - 1    # local index of last on-sample
+        run_starts = np.where(d == 1)[0]  # local index of first on-sample
+        run_ends = np.where(d == -1)[0] - 1  # local index of last on-sample
 
         seg_len = len(seg_time)
         for rs, re in zip(run_starts, run_ends):

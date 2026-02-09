@@ -5,7 +5,6 @@ import datetime
 import numpy as np
 import pytest
 
-# Import the Event class from the event module
 from event_times import Event
 
 
@@ -451,16 +450,14 @@ class TestEventMethods:
         assert event1.gap_between(event2) == 0.0
 
     def test_merge_overlapping_events(self):
-        """Test merging overlapping events."""
+        """Test merging overlapping events without contradictory boundaries."""
         event1 = Event(
             last_off="2024-01-01T09:55:00",
             first_on="2024-01-01T10:00:00",
             last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
             description="Event 1",
         )
         event2 = Event(
-            last_off="2024-01-01T10:25:00",
             first_on="2024-01-01T10:30:00",
             last_on="2024-01-01T11:30:00",
             first_off="2024-01-01T11:35:00",
@@ -472,6 +469,38 @@ class TestEventMethods:
         assert merged.first_on == event1.first_on  # Earlier
         assert merged.last_on == event2.last_on  # Later
         assert merged.first_off == event2.first_off  # Later
+
+    def test_merge_rejects_contradictory_outer_boundaries(self):
+        """Test that events with contradictory outer boundaries cannot merge.
+
+        If an outer boundary (definite OFF) falls within the other event's
+        inner interval (definite ON), this is a logical contradiction.
+        """
+        # event1.first_off = 11:05 falls within event2's inner interval (10:30-11:30)
+        # This means we know it was OFF at 11:05, but event2 says it was ON then
+        event1 = Event(
+            first_on="2024-01-01T10:00:00",
+            last_on="2024-01-01T11:00:00",
+            first_off="2024-01-01T11:05:00",
+        )
+        event2 = Event(
+            first_on="2024-01-01T10:30:00",
+            last_on="2024-01-01T11:30:00",
+        )
+        assert event1.merge(event2) is None
+
+        # event2.last_off = 10:25 falls within event1's inner interval (10:00-11:00)
+        # This means we know it was OFF at 10:25, but event1 says it was ON then
+        event1 = Event(
+            first_on="2024-01-01T10:00:00",
+            last_on="2024-01-01T11:00:00",
+        )
+        event2 = Event(
+            last_off="2024-01-01T10:25:00",
+            first_on="2024-01-01T10:30:00",
+            last_on="2024-01-01T11:30:00",
+        )
+        assert event1.merge(event2) is None
 
     def test_merge_non_overlapping_events_returns_none(self):
         """Test merging non-overlapping events returns None."""
@@ -576,6 +605,99 @@ class TestEventMethods:
             last_on="2024-01-01T11:00:00",
         )
         assert event1.gap_between(event2) == 3600.0
+
+    def test_merge_adjacent_events_with_max_gap(self):
+        """Test merging adjacent events separated by a small gap using max_gap."""
+        event1 = Event(
+            first_on="2024-01-01T10:00:00",
+            last_on="2024-01-01T11:00:00",
+        )
+        event2 = Event(
+            first_on="2024-01-01T11:05:00",  # 5 minute gap
+            last_on="2024-01-01T12:00:00",
+        )
+        # Without max_gap, should return None
+        assert event1.merge(event2) is None
+
+        # With max_gap=300s (5 minutes), should merge
+        merged = event1.merge(event2, max_gap=300.0)
+        assert merged is not None
+        assert merged.first_on == event1.first_on
+        assert merged.last_on == event2.last_on
+
+    def test_merge_with_gap_larger_than_max_gap(self):
+        """Test that events with gap > max_gap don't merge."""
+        event1 = Event(
+            first_on="2024-01-01T10:00:00",
+            last_on="2024-01-01T11:00:00",
+        )
+        event2 = Event(
+            first_on="2024-01-01T12:00:00",  # 1 hour gap
+            last_on="2024-01-01T13:00:00",
+        )
+        # Gap is 3600s, max_gap is 1800s (30 min)
+        merged = event1.merge(event2, max_gap=1800.0)
+        assert merged is None
+
+    def test_merge_touching_events(self):
+        """Test merging events that touch exactly (last_on == first_on)."""
+        event1 = Event(
+            first_on="2024-01-01T10:00:00",
+            last_on="2024-01-01T11:00:00",
+        )
+        event2 = Event(
+            first_on="2024-01-01T11:00:00",  # Exactly touching
+            last_on="2024-01-01T12:00:00",
+        )
+        # Gap is 0, should merge with default max_gap=0
+        merged = event1.merge(event2, max_gap=0.0)
+        assert merged is not None
+        assert merged.first_on == event1.first_on
+        assert merged.last_on == event2.last_on
+
+    def test_merge_prevents_merging_events_with_definite_off_between(self):
+        """Test that events with definite OFF states between them cannot be merged.
+
+        If the first event has first_off or the second event has last_off, this
+        indicates a known OFF state between the events, so they should not merge
+        even if within max_gap tolerance.
+        """
+        # Event1 has first_off - definite OFF after it ends
+        event1 = Event(
+            first_on="2024-01-01T10:00:00",
+            last_on="2024-01-01T11:00:00",
+            first_off="2024-01-01T11:05:00",
+        )
+        # Event2 has last_off - definite OFF before it starts
+        event2 = Event(
+            last_off="2024-01-01T11:50:00",
+            first_on="2024-01-01T12:00:00",
+            last_on="2024-01-01T13:00:00",
+        )
+
+        # Should not merge despite being within max_gap tolerance
+        merged = event1.merge(event2, max_gap=3600.0)
+        assert merged is None
+
+    def test_merge_with_gap_preserves_valid_outer_boundaries(self):
+        """Test that valid outer boundaries are preserved when merging with a gap."""
+        event1 = Event(
+            last_off="2024-01-01T09:00:00",  # Before merged interval
+            first_on="2024-01-01T10:00:00",
+            last_on="2024-01-01T11:00:00",
+        )
+        event2 = Event(
+            first_on="2024-01-01T11:30:00",  # 30 min gap
+            last_on="2024-01-01T13:00:00",
+            first_off="2024-01-01T14:00:00",  # After merged interval
+        )
+
+        merged = event1.merge(event2, max_gap=1800.0)  # 30 minute tolerance
+        assert merged is not None
+
+        # Valid outer boundaries should be preserved
+        assert merged.last_off == event1.last_off  # 09:00 is before 10:00
+        assert merged.first_off == event2.first_off  # 14:00 is after 13:00
 
 
 class TestEventFromInterval:
@@ -751,6 +873,26 @@ class TestEventFromDuration:
         """Test from_duration with fractional hours (1.5 h = 5400 s)."""
         event = Event.from_duration("2024-01-01T10:00:00", 1.5, "h")
         assert event.duration == pytest.approx(5400.0)
+
+    def test_from_duration_overflow_protection(self):
+        """Test from_duration raises error for durations exceeding ~292 years."""
+        with pytest.raises(ValueError, match="Duration too large.*292 year limit"):
+            # Try to create an event with 300 years duration
+            Event.from_duration("2024-01-01T10:00:00", 300, "D")  # 300 days is fine
+            Event.from_duration("2024-01-01T10:00:00", 300 * 365, "D")  # ~300 years
+
+    def test_from_duration_sub_nanosecond_protection(self):
+        """Test from_duration raises error for sub-nanosecond durations."""
+        with pytest.raises(ValueError, match="Duration too small.*sub-nanosecond"):
+            # 0.5 nanoseconds would be truncated
+            Event.from_duration("2024-01-01T10:00:00", 0.5, "ns")
+
+    def test_from_duration_one_nanosecond(self):
+        """Test from_duration with exactly 1 nanosecond (edge case)."""
+        event = Event.from_duration("2024-01-01T10:00:00", 1, "ns")
+        # Duration should be non-zero but very small
+        assert event.duration > 0
+        assert event.duration == pytest.approx(1e-9, abs=1e-10)
 
 
 class TestEventFromMerlin:
