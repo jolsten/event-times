@@ -691,20 +691,13 @@ class Event(BaseModel):
         duration_td = np.timedelta64(round(duration_ns), "ns")
         stop_dt = start_dt + duration_td
 
-        if interval_type == "inner":
-            return cls(
-                start_max=start_dt,
-                stop_min=stop_dt,
-                description=description,
-                color=color,
-            )
-        else:  # outer
-            return cls(
-                start_min=start_dt,
-                stop_max=stop_dt,
-                description=description,
-                color=color,
-            )
+        return cls.from_interval(
+            start=start_dt,
+            stop=stop_dt,
+            interval_type=interval_type,
+            description=description,
+            color=color,
+        )
 
     @classmethod
     def from_merlin(
@@ -767,9 +760,10 @@ class Event(BaseModel):
         else:
             end_dt = end_dt_same_day
 
-        return cls(
-            start_max=start_dt,
-            stop_min=end_dt,
+        return cls.from_interval(
+            start=start_dt,
+            stop=end_dt,
+            interval_type="inner",
             description=description,
             color=color,
         )
