@@ -88,20 +88,20 @@ class TestPropertyBasedOutputStructure:
         events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
-            # If both are not None, first_on should come before or equal to last_on
-            if event.first_on is not None and event.last_on is not None:
-                assert event.first_on <= event.last_on
+            # If both are not None, start_max should come before or equal to stop_min
+            if event.start_max is not None and event.stop_min is not None:
+                assert event.start_max <= event.stop_min
 
             # If all four are present, check full ordering
             if (
-                event.last_off is not None
-                and event.first_on is not None
-                and event.last_on is not None
-                and event.first_off is not None
+                event.start_min is not None
+                and event.start_max is not None
+                and event.stop_min is not None
+                and event.stop_max is not None
             ):
-                assert event.last_off < event.first_on
-                assert event.first_on <= event.last_on
-                assert event.last_on < event.first_off
+                assert event.start_min < event.start_max
+                assert event.start_max <= event.stop_min
+                assert event.stop_min < event.stop_max
 
     @given(datetime_state_pairs(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=1000)
@@ -113,14 +113,14 @@ class TestPropertyBasedOutputStructure:
         timestamp_set = set(timestamps)
 
         for event in events:
-            if event.last_off is not None:
-                assert event.last_off in timestamp_set
-            if event.first_on is not None:
-                assert event.first_on in timestamp_set
-            if event.last_on is not None:
-                assert event.last_on in timestamp_set
-            if event.first_off is not None:
-                assert event.first_off in timestamp_set
+            if event.start_min is not None:
+                assert event.start_min in timestamp_set
+            if event.start_max is not None:
+                assert event.start_max in timestamp_set
+            if event.stop_min is not None:
+                assert event.stop_min in timestamp_set
+            if event.stop_max is not None:
+                assert event.stop_max in timestamp_set
 
     @given(datetime_state_pairs(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=1000)
@@ -136,9 +136,9 @@ class TestPropertyBasedOutputStructure:
             curr_event = events[i]
             next_event = events[i + 1]
 
-            # Current event's last_on should come before next event's first_on
-            if curr_event.last_on is not None and next_event.first_on is not None:
-                assert curr_event.last_on < next_event.first_on
+            # Current event's stop_min should come before next event's start_max
+            if curr_event.stop_min is not None and next_event.start_max is not None:
+                assert curr_event.stop_min < next_event.start_max
 
 
 class TestPropertyBasedStateConsistency:
@@ -165,10 +165,10 @@ class TestPropertyBasedStateConsistency:
 
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
-        assert events[0].last_off is None
-        assert events[0].first_off is None
-        assert events[0].first_on == timestamps[0]
-        assert events[0].last_on == timestamps[-1]
+        assert events[0].start_min is None
+        assert events[0].stop_max is None
+        assert events[0].start_max == timestamps[0]
+        assert events[0].stop_min == timestamps[-1]
 
     @given(datetime_state_pairs(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=1000)
@@ -182,50 +182,50 @@ class TestPropertyBasedStateConsistency:
 
     @given(datetime_state_pairs(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=1000)
-    def test_first_on_corresponds_to_true_state(self, data):
-        """Test that first_on timestamps correspond to True states."""
+    def test_start_max_corresponds_to_true_state(self, data):
+        """Test that start_max timestamps correspond to True states."""
         timestamps, states = data
         events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
-            if event.first_on is not None:
-                idx = np.where(timestamps == event.first_on)[0][0]
+            if event.start_max is not None:
+                idx = np.where(timestamps == event.start_max)[0][0]
                 assert states[idx]
 
     @given(datetime_state_pairs(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=1000)
-    def test_last_on_corresponds_to_true_state(self, data):
-        """Test that last_on timestamps correspond to True states."""
+    def test_stop_min_corresponds_to_true_state(self, data):
+        """Test that stop_min timestamps correspond to True states."""
         timestamps, states = data
         events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
-            if event.last_on is not None:
-                idx = np.where(timestamps == event.last_on)[0][0]
+            if event.stop_min is not None:
+                idx = np.where(timestamps == event.stop_min)[0][0]
                 assert states[idx]
 
     @given(datetime_state_pairs(min_size=2, max_size=50))
     @settings(max_examples=100, deadline=1000)
-    def test_last_off_corresponds_to_false_state(self, data):
-        """Test that last_off timestamps correspond to False states."""
+    def test_start_min_corresponds_to_false_state(self, data):
+        """Test that start_min timestamps correspond to False states."""
         timestamps, states = data
         events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
-            if event.last_off is not None:
-                idx = np.where(timestamps == event.last_off)[0][0]
+            if event.start_min is not None:
+                idx = np.where(timestamps == event.start_min)[0][0]
                 assert not states[idx]
 
     @given(datetime_state_pairs(min_size=2, max_size=50))
     @settings(max_examples=100, deadline=1000)
-    def test_first_off_corresponds_to_false_state(self, data):
-        """Test that first_off timestamps correspond to False states."""
+    def test_stop_max_corresponds_to_false_state(self, data):
+        """Test that stop_max timestamps correspond to False states."""
         timestamps, states = data
         events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
-            if event.first_off is not None:
-                idx = np.where(timestamps == event.first_off)[0][0]
+            if event.stop_max is not None:
+                idx = np.where(timestamps == event.stop_max)[0][0]
                 assert not states[idx]
 
 
@@ -240,10 +240,10 @@ class TestPropertyBasedEventProperties:
         events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
-            if event.first_on is not None:
-                assert event.start == event.first_on
+            if event.start_max is not None:
+                assert event.start == event.start_max
             else:
-                assert event.start == event.last_off
+                assert event.start == event.start_min
 
     @given(datetime_state_pairs(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=1000)
@@ -253,10 +253,10 @@ class TestPropertyBasedEventProperties:
         events = events_from_state(timestamps, states, max_gap=60.0)
 
         for event in events:
-            if event.last_on is not None:
-                assert event.stop == event.last_on
+            if event.stop_min is not None:
+                assert event.stop == event.stop_min
             else:
-                assert event.stop == event.first_off
+                assert event.stop == event.stop_max
 
     @given(datetime_state_pairs(min_size=1, max_size=50))
     @settings(max_examples=100, deadline=1000)
@@ -338,9 +338,9 @@ class TestPropertyBasedInvariants:
         # Count True samples covered by events
         event_true_count = 0
         for event in events:
-            if event.first_on is not None and event.last_on is not None:
-                first_idx = np.where(timestamps == event.first_on)[0][0]
-                last_idx = np.where(timestamps == event.last_on)[0][0]
+            if event.start_max is not None and event.stop_min is not None:
+                first_idx = np.where(timestamps == event.start_max)[0][0]
+                last_idx = np.where(timestamps == event.stop_min)[0][0]
                 event_true_count += last_idx - first_idx + 1
 
         assert event_true_count == total_true
@@ -355,9 +355,9 @@ class TestPropertyBasedInvariants:
         # Collect all indices covered by each event
         event_indices = []
         for event in events:
-            if event.first_on is not None and event.last_on is not None:
-                first_idx = np.where(timestamps == event.first_on)[0][0]
-                last_idx = np.where(timestamps == event.last_on)[0][0]
+            if event.start_max is not None and event.stop_min is not None:
+                first_idx = np.where(timestamps == event.start_max)[0][0]
+                last_idx = np.where(timestamps == event.stop_min)[0][0]
                 indices = set(range(first_idx, last_idx + 1))
                 event_indices.append(indices)
 

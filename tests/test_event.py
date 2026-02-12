@@ -13,43 +13,43 @@ class TestEventCreation:
     """Test Event instantiation and validation."""
 
     def test_create_event_with_inner_interval(self):
-        """Test creating event with first_on and last_on."""
+        """Test creating event with start_max and stop_min."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
-        assert event.first_on is not None
-        assert event.last_on is not None
+        assert event.start_max is not None
+        assert event.stop_min is not None
         assert event.duration == 3600.0
 
     def test_create_event_with_outer_interval(self):
-        """Test creating event with last_off and first_off."""
+        """Test creating event with start_min and stop_max."""
         event = Event(
-            last_off="2024-01-01T09:00:00",
-            first_off="2024-01-01T12:00:00",
+            start_min="2024-01-01T09:00:00",
+            stop_max="2024-01-01T12:00:00",
         )
-        assert event.last_off is not None
-        assert event.first_off is not None
+        assert event.start_min is not None
+        assert event.stop_max is not None
         assert event.duration == 3 * 3600.0
 
     def test_create_event_with_all_boundaries(self):
         """Test creating event with all four boundaries."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
-        assert event.last_off is not None
-        assert event.first_on is not None
-        assert event.last_on is not None
-        assert event.first_off is not None
+        assert event.start_min is not None
+        assert event.start_max is not None
+        assert event.stop_min is not None
+        assert event.stop_max is not None
 
     def test_create_event_with_description_and_color(self):
         """Test creating event with metadata."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
             description="Test event",
             color="#FF5733",
         )
@@ -60,15 +60,15 @@ class TestEventCreation:
         """Test creating event with numpy datetime64 objects."""
         start = np.datetime64("2024-01-01T10:00:00", "ns")
         stop = np.datetime64("2024-01-01T11:00:00", "ns")
-        event = Event(first_on=start, last_on=stop)
-        assert event.first_on == start
-        assert event.last_on == stop
+        event = Event(start_max=start, stop_min=stop)
+        assert event.start_max == start
+        assert event.stop_min == stop
 
     def test_create_event_with_python_datetime(self):
         """Test creating event with Python datetime objects."""
         start = datetime.datetime(2024, 1, 1, 10, 0, 0)
         stop = datetime.datetime(2024, 1, 1, 11, 0, 0)
-        event = Event(first_on=start, last_on=stop)
+        event = Event(start_max=start, stop_min=stop)
         assert event.duration == 3600.0
 
 
@@ -85,20 +85,20 @@ class TestEventCreation:
             ValueError,
             "at least one stop time",
         ),
-        (  # first_on after last_on (negative duration)
+        (  # start_max after stop_min (negative duration)
             (None, "2024-01-01T11:00:00", "2024-01-01T10:00:00", None),
             ValueError,
-            "first_on must precede or equal last_on",
+            "start_max must precede or equal stop_min",
         ),
-        (  # last_off after first_on
+        (  # start_min after start_max
             ("2024-01-01T10:30:00", "2024-01-01T10:00:00", "2024-01-01T11:00:00", None),
             ValueError,
-            "last_off must precede or equal first_on",
+            "start_min must precede or equal start_max",
         ),
-        (  # last_on after first_off
+        (  # stop_min after stop_max
             (None, "2024-01-01T10:00:00", "2024-01-01T11:30:00", "2024-01-01T11:00:00"),
             ValueError,
-            "last_on must precede or equal first_off",
+            "stop_min must precede or equal stop_max",
         ),
         (  # Invalid datetime string
             (None, "not a date", "2024-01-01T11:30:00", None),
@@ -111,105 +111,105 @@ class TestEventValidationFails:
     """Test Event validation rules."""
 
     def test_validation(self, times: tuple[str, ...], exc, text: Optional[str]):
-        last_off, first_on, last_on, first_off = times
+        start_min, start_max, stop_min, stop_max = times
 
         with pytest.raises(exc, match=text):
             Event(
-                last_off=last_off,
-                first_on=first_on,
-                last_on=last_on,
-                first_off=first_off,
+                start_min=start_min,
+                start_max=start_max,
+                stop_min=stop_min,
+                stop_max=stop_max,
             )
 
 
 class TestEventProperties:
     """Test Event properties and computed values."""
 
-    def test_start_property_prefers_first_on(self):
-        """Test that start prefers first_on over last_off."""
+    def test_start_property_prefers_start_max(self):
+        """Test that start prefers start_max over start_min."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
-        assert event.start == event.first_on
+        assert event.start == event.start_max
 
-    def test_start_property_uses_last_off_when_first_on_missing(self):
-        """Test that start uses last_off when first_on is None."""
+    def test_start_property_uses_start_min_when_start_max_missing(self):
+        """Test that start uses start_min when start_max is None."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            stop_max="2024-01-01T11:05:00",
         )
-        assert event.start == event.last_off
+        assert event.start == event.start_min
 
-    def test_stop_property_prefers_last_on(self):
-        """Test that stop prefers last_on over first_off."""
+    def test_stop_property_prefers_stop_min(self):
+        """Test that stop prefers stop_min over stop_max."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
-        assert event.stop == event.last_on
+        assert event.stop == event.stop_min
 
-    def test_stop_property_uses_first_off_when_last_on_missing(self):
-        """Test that stop uses first_off when last_on is None."""
+    def test_stop_property_uses_stop_max_when_stop_min_missing(self):
+        """Test that stop uses stop_max when stop_min is None."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            stop_max="2024-01-01T11:05:00",
         )
-        assert event.stop == event.first_off
+        assert event.stop == event.stop_max
 
     def test_times_property(self):
         """Test that times returns all four boundaries."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
         times = event.times
-        assert times[0] == event.last_off
-        assert times[1] == event.first_on
-        assert times[2] == event.last_on
-        assert times[3] == event.first_off
+        assert times[0] == event.start_min
+        assert times[1] == event.start_max
+        assert times[2] == event.stop_min
+        assert times[3] == event.stop_max
 
     def test_inner_interval_property(self):
-        """Test inner_interval returns (first_on, last_on)."""
+        """Test inner_interval returns (start_max, stop_min)."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
         inner = event.inner_interval
-        assert inner[0] == event.first_on
-        assert inner[1] == event.last_on
+        assert inner[0] == event.start_max
+        assert inner[1] == event.stop_min
 
     def test_outer_interval_property(self):
-        """Test outer_interval returns (last_off, first_off)."""
+        """Test outer_interval returns (start_min, stop_max)."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
         outer = event.outer_interval
-        assert outer[0] == event.last_off
-        assert outer[1] == event.first_off
+        assert outer[0] == event.start_min
+        assert outer[1] == event.stop_max
 
     def test_duration_in_seconds(self):
         """Test duration calculation in seconds."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:30:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:30:00",
         )
         assert event.duration == 5400.0  # 1.5 hours
 
     def test_get_duration_various_units(self):
         """Test get_duration with different units."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         assert event.get_duration("h") == 1.0
         assert event.get_duration("m") == 60.0
@@ -219,8 +219,8 @@ class TestEventProperties:
     def test_midpoint_property(self):
         """Test midpoint calculation."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T12:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T12:00:00",
         )
         expected_midpoint = np.datetime64("2024-01-01T11:00:00", "ns")
         assert event.midpoint == expected_midpoint
@@ -228,77 +228,77 @@ class TestEventProperties:
     def test_uncertainty_start(self):
         """Test start uncertainty calculation."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         assert event.uncertainty_start == 300.0  # 5 minutes
 
     def test_uncertainty_start_none_when_missing(self):
         """Test start uncertainty is None when boundaries missing."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         assert event.uncertainty_start is None
 
     def test_uncertainty_stop(self):
         """Test stop uncertainty calculation."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
         assert event.uncertainty_stop == 300.0  # 5 minutes
 
     def test_uncertainty_stop_none_when_missing(self):
         """Test stop uncertainty is None when boundaries missing."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         assert event.uncertainty_stop is None
 
     def test_total_uncertainty(self):
         """Test total uncertainty calculation."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
         assert event.total_uncertainty == 600.0  # 10 minutes total
 
     def test_total_uncertainty_partial(self):
         """Test total uncertainty with only one boundary."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         assert event.total_uncertainty == 300.0  # Only start uncertainty
 
     def test_is_point_event_true(self):
         """Test is_point_event for very short event."""
         event = Event(
-            first_on="2024-01-01T10:00:00.000000",
-            last_on="2024-01-01T10:00:00.000001",  # 1 microsecond
+            start_max="2024-01-01T10:00:00.000000",
+            stop_min="2024-01-01T10:00:00.000001",  # 1 microsecond
         )
         assert event.is_point_event()  # Pythonic: assert truthy value
 
     def test_is_point_event_false(self):
         """Test is_point_event for regular event."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         assert not event.is_point_event()  # Pythonic: assert falsy value
 
     def test_is_point_event_custom_threshold(self):
         """Test is_point_event with custom threshold."""
         event = Event(
-            first_on="2024-01-01T10:00:00.000",
-            last_on="2024-01-01T10:00:00.100",  # 100 milliseconds
+            start_max="2024-01-01T10:00:00.000",
+            stop_min="2024-01-01T10:00:00.100",  # 100 milliseconds
         )
         # 100ms is not a point event with 1μs threshold
         assert not event.is_point_event()
@@ -314,8 +314,8 @@ class TestEventMethods:
     def test_contains_timestamp_inside(self):
         """Test contains returns True for timestamp inside event."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         timestamp = np.datetime64("2024-01-01T10:30:00", "ns")
         assert event.contains(timestamp) is True
@@ -323,8 +323,8 @@ class TestEventMethods:
     def test_contains_timestamp_outside(self):
         """Test contains returns False for timestamp outside event."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         timestamp = np.datetime64("2024-01-01T12:00:00", "ns")
         assert event.contains(timestamp) is False
@@ -332,8 +332,8 @@ class TestEventMethods:
     def test_contains_timestamp_at_boundary(self):
         """Test contains returns True for timestamp at boundary."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         assert event.contains(event.start) is True
         assert event.contains(event.stop) is True
@@ -341,10 +341,10 @@ class TestEventMethods:
     def test_definitely_contains_inside_inner_interval(self):
         """Test definitely_contains for timestamp in inner interval."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
         timestamp = np.datetime64("2024-01-01T10:30:00", "ns")
         assert event.definitely_contains(timestamp) is True
@@ -352,10 +352,10 @@ class TestEventMethods:
     def test_definitely_contains_in_uncertainty_region(self):
         """Test definitely_contains for timestamp in uncertainty region."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
         timestamp = np.datetime64("2024-01-01T09:57:00", "ns")
         assert event.definitely_contains(timestamp) is False
@@ -363,8 +363,8 @@ class TestEventMethods:
     def test_definitely_contains_no_inner_interval(self):
         """Test definitely_contains when inner interval not defined."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            stop_max="2024-01-01T11:05:00",
         )
         timestamp = np.datetime64("2024-01-01T10:30:00", "ns")
         assert event.definitely_contains(timestamp) is False
@@ -372,12 +372,12 @@ class TestEventMethods:
     def test_overlaps_true(self):
         """Test overlaps returns True for overlapping events."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T10:30:00",
-            last_on="2024-01-01T11:30:00",
+            start_max="2024-01-01T10:30:00",
+            stop_min="2024-01-01T11:30:00",
         )
         assert event1.overlaps(event2) is True
         assert event2.overlaps(event1) is True
@@ -385,12 +385,12 @@ class TestEventMethods:
     def test_overlaps_false(self):
         """Test overlaps returns False for non-overlapping events."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T12:00:00",
-            last_on="2024-01-01T13:00:00",
+            start_max="2024-01-01T12:00:00",
+            stop_min="2024-01-01T13:00:00",
         )
         assert event1.overlaps(event2) is False
         assert event2.overlaps(event1) is False
@@ -398,12 +398,12 @@ class TestEventMethods:
     def test_overlaps_touching_events(self):
         """Test overlaps for events that touch but don't overlap."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T11:00:00",
-            last_on="2024-01-01T12:00:00",
+            start_max="2024-01-01T11:00:00",
+            stop_min="2024-01-01T12:00:00",
         )
         # Should not overlap since one stops exactly when other starts
         assert event1.overlaps(event2) is False
@@ -411,12 +411,12 @@ class TestEventMethods:
     def test_gap_between_separated_events(self):
         """Test gap_between for separated events."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T12:00:00",
-            last_on="2024-01-01T13:00:00",
+            start_max="2024-01-01T12:00:00",
+            stop_min="2024-01-01T13:00:00",
         )
         assert event1.gap_between(event2) == 3600.0  # 1 hour gap
         assert event2.gap_between(event1) == 3600.0
@@ -424,12 +424,12 @@ class TestEventMethods:
     def test_gap_between_overlapping_events(self):
         """Test gap_between for overlapping events (negative gap)."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T10:30:00",
-            last_on="2024-01-01T11:30:00",
+            start_max="2024-01-01T10:30:00",
+            stop_min="2024-01-01T11:30:00",
         )
         gap = event1.gap_between(event2)
         assert gap < 0  # Negative indicates overlap
@@ -438,35 +438,35 @@ class TestEventMethods:
     def test_gap_between_touching_events(self):
         """Test gap_between for events that touch."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T11:00:00",
-            last_on="2024-01-01T12:00:00",
+            start_max="2024-01-01T11:00:00",
+            stop_min="2024-01-01T12:00:00",
         )
         assert event1.gap_between(event2) == 0.0
 
     def test_merge_overlapping_events(self):
         """Test merging overlapping events without contradictory boundaries."""
         event1 = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
             description="Event 1",
         )
         event2 = Event(
-            first_on="2024-01-01T10:30:00",
-            last_on="2024-01-01T11:30:00",
-            first_off="2024-01-01T11:35:00",
+            start_max="2024-01-01T10:30:00",
+            stop_min="2024-01-01T11:30:00",
+            stop_max="2024-01-01T11:35:00",
             description="Event 2",
         )
         merged = event1.merge(event2)
         assert merged is not None
-        assert merged.last_off == event1.last_off  # Earlier
-        assert merged.first_on == event1.first_on  # Earlier
-        assert merged.last_on == event2.last_on  # Later
-        assert merged.first_off == event2.first_off  # Later
+        assert merged.start_min == event1.start_min  # Earlier
+        assert merged.start_max == event1.start_max  # Earlier
+        assert merged.stop_min == event2.stop_min  # Later
+        assert merged.stop_max == event2.stop_max  # Later
 
     def test_merge_rejects_contradictory_outer_boundaries(self):
         """Test that events with contradictory outer boundaries cannot merge.
@@ -474,54 +474,54 @@ class TestEventMethods:
         If an outer boundary (definite OFF) falls within the other event's
         inner interval (definite ON), this is a logical contradiction.
         """
-        # event1.first_off = 11:05 falls within event2's inner interval (10:30-11:30)
+        # event1.stop_max = 11:05 falls within event2's inner interval (10:30-11:30)
         # This means we know it was OFF at 11:05, but event2 says it was ON then
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
         event2 = Event(
-            first_on="2024-01-01T10:30:00",
-            last_on="2024-01-01T11:30:00",
+            start_max="2024-01-01T10:30:00",
+            stop_min="2024-01-01T11:30:00",
         )
         assert event1.merge(event2) is None
 
-        # event2.last_off = 10:25 falls within event1's inner interval (10:00-11:00)
+        # event2.start_min = 10:25 falls within event1's inner interval (10:00-11:00)
         # This means we know it was OFF at 10:25, but event1 says it was ON then
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            last_off="2024-01-01T10:25:00",
-            first_on="2024-01-01T10:30:00",
-            last_on="2024-01-01T11:30:00",
+            start_min="2024-01-01T10:25:00",
+            start_max="2024-01-01T10:30:00",
+            stop_min="2024-01-01T11:30:00",
         )
         assert event1.merge(event2) is None
 
     def test_merge_non_overlapping_events_returns_none(self):
         """Test merging non-overlapping events returns None."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T12:00:00",
-            last_on="2024-01-01T13:00:00",
+            start_max="2024-01-01T12:00:00",
+            stop_min="2024-01-01T13:00:00",
         )
         assert event1.merge(event2) is None
 
     def test_merge_with_custom_description(self):
         """Test merge with custom description."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
             description="Event 1",
         )
         event2 = Event(
-            first_on="2024-01-01T10:30:00",
-            last_on="2024-01-01T11:30:00",
+            start_max="2024-01-01T10:30:00",
+            stop_min="2024-01-01T11:30:00",
             description="Event 2",
         )
         merged = event1.merge(event2, description="Merged event")
@@ -531,13 +531,13 @@ class TestEventMethods:
     def test_merge_with_custom_color(self):
         """Test merge with custom color."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
             color="#FF0000",
         )
         event2 = Event(
-            first_on="2024-01-01T10:30:00",
-            last_on="2024-01-01T11:30:00",
+            start_max="2024-01-01T10:30:00",
+            stop_min="2024-01-01T11:30:00",
             color="#00FF00",
         )
         merged = event1.merge(event2, color="#0000FF")
@@ -547,13 +547,13 @@ class TestEventMethods:
     def test_merge_preserves_first_color_by_default(self):
         """Test merge preserves first event's color by default."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
             color="#FF0000",
         )
         event2 = Event(
-            first_on="2024-01-01T10:30:00",
-            last_on="2024-01-01T11:30:00",
+            start_max="2024-01-01T10:30:00",
+            stop_min="2024-01-01T11:30:00",
             color="#00FF00",
         )
         merged = event1.merge(event2)
@@ -563,31 +563,31 @@ class TestEventMethods:
     def test_merge_asymmetric_boundaries(self):
         """Test merge when only one event has outer boundaries."""
         event1 = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T10:30:00",
-            last_on="2024-01-01T11:30:00",
-            first_off="2024-01-01T11:35:00",
+            start_max="2024-01-01T10:30:00",
+            stop_min="2024-01-01T11:30:00",
+            stop_max="2024-01-01T11:35:00",
         )
         merged = event1.merge(event2)
         assert merged is not None
-        assert merged.last_off == event1.last_off
-        assert merged.first_on == event1.first_on
-        assert merged.last_on == event2.last_on
-        assert merged.first_off == event2.first_off
+        assert merged.start_min == event1.start_min
+        assert merged.start_max == event1.start_max
+        assert merged.stop_min == event2.stop_min
+        assert merged.stop_max == event2.stop_max
 
     def test_overlaps_contained_event(self):
         """Test overlaps when one event is entirely within another."""
         outer = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T13:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T13:00:00",
         )
         inner = Event(
-            first_on="2024-01-01T11:00:00",
-            last_on="2024-01-01T12:00:00",
+            start_max="2024-01-01T11:00:00",
+            stop_min="2024-01-01T12:00:00",
         )
         assert outer.overlaps(inner) is True
         assert inner.overlaps(outer) is True
@@ -595,24 +595,24 @@ class TestEventMethods:
     def test_gap_between_when_self_is_after_other(self):
         """Test gap_between when self comes after other."""
         event1 = Event(
-            first_on="2024-01-01T12:00:00",
-            last_on="2024-01-01T13:00:00",
+            start_max="2024-01-01T12:00:00",
+            stop_min="2024-01-01T13:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         assert event1.gap_between(event2) == 3600.0
 
     def test_merge_adjacent_events_with_max_gap(self):
         """Test merging adjacent events separated by a small gap using max_gap."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T11:05:00",  # 5 minute gap
-            last_on="2024-01-01T12:00:00",
+            start_max="2024-01-01T11:05:00",  # 5 minute gap
+            stop_min="2024-01-01T12:00:00",
         )
         # Without max_gap, should return None
         assert event1.merge(event2) is None
@@ -620,57 +620,57 @@ class TestEventMethods:
         # With max_gap=300s (5 minutes), should merge
         merged = event1.merge(event2, max_gap=300.0)
         assert merged is not None
-        assert merged.first_on == event1.first_on
-        assert merged.last_on == event2.last_on
+        assert merged.start_max == event1.start_max
+        assert merged.stop_min == event2.stop_min
 
     def test_merge_with_gap_larger_than_max_gap(self):
         """Test that events with gap > max_gap don't merge."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T12:00:00",  # 1 hour gap
-            last_on="2024-01-01T13:00:00",
+            start_max="2024-01-01T12:00:00",  # 1 hour gap
+            stop_min="2024-01-01T13:00:00",
         )
         # Gap is 3600s, max_gap is 1800s (30 min)
         merged = event1.merge(event2, max_gap=1800.0)
         assert merged is None
 
     def test_merge_touching_events(self):
-        """Test merging events that touch exactly (last_on == first_on)."""
+        """Test merging events that touch exactly (stop_min == start_max)."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T11:00:00",  # Exactly touching
-            last_on="2024-01-01T12:00:00",
+            start_max="2024-01-01T11:00:00",  # Exactly touching
+            stop_min="2024-01-01T12:00:00",
         )
         # Gap is 0, should merge with default max_gap=0
         merged = event1.merge(event2, max_gap=0.0)
         assert merged is not None
-        assert merged.first_on == event1.first_on
-        assert merged.last_on == event2.last_on
+        assert merged.start_max == event1.start_max
+        assert merged.stop_min == event2.stop_min
 
     def test_merge_prevents_merging_events_with_definite_off_between(self):
         """Test that events with definite OFF states between them cannot be merged.
 
-        If the first event has first_off or the second event has last_off, this
+        If the first event has stop_max or the second event has start_min, this
         indicates a known OFF state between the events, so they should not merge
         even if within max_gap tolerance.
         """
-        # Event1 has first_off - definite OFF after it ends
+        # Event1 has stop_max - definite OFF after it ends
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
         )
-        # Event2 has last_off - definite OFF before it starts
+        # Event2 has start_min - definite OFF before it starts
         event2 = Event(
-            last_off="2024-01-01T11:50:00",
-            first_on="2024-01-01T12:00:00",
-            last_on="2024-01-01T13:00:00",
+            start_min="2024-01-01T11:50:00",
+            start_max="2024-01-01T12:00:00",
+            stop_min="2024-01-01T13:00:00",
         )
 
         # Should not merge despite being within max_gap tolerance
@@ -680,22 +680,22 @@ class TestEventMethods:
     def test_merge_with_gap_preserves_valid_outer_boundaries(self):
         """Test that valid outer boundaries are preserved when merging with a gap."""
         event1 = Event(
-            last_off="2024-01-01T09:00:00",  # Before merged interval
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_min="2024-01-01T09:00:00",  # Before merged interval
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T11:30:00",  # 30 min gap
-            last_on="2024-01-01T13:00:00",
-            first_off="2024-01-01T14:00:00",  # After merged interval
+            start_max="2024-01-01T11:30:00",  # 30 min gap
+            stop_min="2024-01-01T13:00:00",
+            stop_max="2024-01-01T14:00:00",  # After merged interval
         )
 
         merged = event1.merge(event2, max_gap=1800.0)  # 30 minute tolerance
         assert merged is not None
 
         # Valid outer boundaries should be preserved
-        assert merged.last_off == event1.last_off  # 09:00 is before 10:00
-        assert merged.first_off == event2.first_off  # 14:00 is after 13:00
+        assert merged.start_min == event1.start_min  # 09:00 is before 10:00
+        assert merged.stop_max == event2.stop_max  # 14:00 is after 13:00
 
 
 class TestEventFromInterval:
@@ -707,10 +707,10 @@ class TestEventFromInterval:
             "2024-01-01T10:00:00",
             "2024-01-01T11:00:00",
         )
-        assert event.first_on is not None
-        assert event.last_on is not None
-        assert event.last_off is None
-        assert event.first_off is None
+        assert event.start_max is not None
+        assert event.stop_min is not None
+        assert event.start_min is None
+        assert event.stop_max is None
 
     def test_from_interval_inner_explicit(self):
         """Test from_interval with explicit inner interval."""
@@ -719,10 +719,10 @@ class TestEventFromInterval:
             "2024-01-01T11:00:00",
             interval_type="inner",
         )
-        assert event.first_on is not None
-        assert event.last_on is not None
-        assert event.last_off is None
-        assert event.first_off is None
+        assert event.start_max is not None
+        assert event.stop_min is not None
+        assert event.start_min is None
+        assert event.stop_max is None
 
     def test_from_interval_outer(self):
         """Test from_interval with outer interval."""
@@ -731,10 +731,10 @@ class TestEventFromInterval:
             "2024-01-01T11:05:00",
             interval_type="outer",
         )
-        assert event.last_off is not None
-        assert event.first_off is not None
-        assert event.first_on is None
-        assert event.last_on is None
+        assert event.start_min is not None
+        assert event.stop_max is not None
+        assert event.start_max is None
+        assert event.stop_min is None
 
     def test_from_interval_with_description_and_color(self):
         """Test from_interval with metadata."""
@@ -752,8 +752,8 @@ class TestEventFromInterval:
         start = np.datetime64("2024-01-01T10:00:00", "ns")
         stop = np.datetime64("2024-01-01T11:00:00", "ns")
         event = Event.from_interval(start, stop)
-        assert event.first_on == start
-        assert event.last_on == stop
+        assert event.start_max == start
+        assert event.stop_min == stop
 
 
 class TestEventFromDuration:
@@ -766,8 +766,8 @@ class TestEventFromDuration:
             3600,  # 1 hour in seconds
         )
         assert event.duration == 3600.0
-        assert event.first_on is not None
-        assert event.last_on is not None
+        assert event.start_max is not None
+        assert event.stop_min is not None
 
     def test_from_duration_hours(self):
         """Test from_duration with hours unit."""
@@ -811,10 +811,10 @@ class TestEventFromDuration:
             "2024-01-01T10:00:00",
             3600,
         )
-        assert event.first_on is not None
-        assert event.last_on is not None
-        assert event.last_off is None
-        assert event.first_off is None
+        assert event.start_max is not None
+        assert event.stop_min is not None
+        assert event.start_min is None
+        assert event.stop_max is None
 
     def test_from_duration_outer_interval(self):
         """Test from_duration with outer interval type."""
@@ -823,10 +823,10 @@ class TestEventFromDuration:
             3600,
             interval_type="outer",
         )
-        assert event.last_off is not None
-        assert event.first_off is not None
-        assert event.first_on is None
-        assert event.last_on is None
+        assert event.start_min is not None
+        assert event.stop_max is not None
+        assert event.start_max is None
+        assert event.stop_min is None
 
     def test_from_duration_with_description_and_color(self):
         """Test from_duration with metadata."""
@@ -904,8 +904,8 @@ class TestEventFromMerlin:
             "11:00:00",
         )
         assert event.duration == 3600.0
-        assert event.first_on is not None
-        assert event.last_on is not None
+        assert event.start_max is not None
+        assert event.stop_min is not None
 
     def test_from_merlin_spanning_midnight(self):
         """Test from_merlin with event spanning midnight."""
@@ -917,7 +917,7 @@ class TestEventFromMerlin:
         assert event.duration == 7200.0  # 2 hours
         # Check that end is on next day
         expected_end = np.datetime64("2024-01-02T01:00:00", "ns")
-        assert event.last_on == expected_end
+        assert event.stop_min == expected_end
 
     def test_from_merlin_compact_format(self):
         """Test from_merlin with compact YYYYMMDD HHMMSS format."""
@@ -929,8 +929,8 @@ class TestEventFromMerlin:
         assert event.duration == 3600.0
         expected_start = np.datetime64("2024-01-01T10:00:00", "ns")
         expected_end = np.datetime64("2024-01-01T11:00:00", "ns")
-        assert event.first_on == expected_start
-        assert event.last_on == expected_end
+        assert event.start_max == expected_start
+        assert event.stop_min == expected_end
 
     def test_from_merlin_compact_spanning_midnight(self):
         """Test from_merlin compact format spanning midnight."""
@@ -941,7 +941,7 @@ class TestEventFromMerlin:
         )
         assert event.duration == 7200.0  # 2 hours
         expected_end = np.datetime64("2024-01-02T01:00:00", "ns")
-        assert event.last_on == expected_end
+        assert event.stop_min == expected_end
 
     def test_from_merlin_with_subseconds(self):
         """Test from_merlin with subsecond precision."""
@@ -1032,7 +1032,7 @@ class TestEventFromMerlin:
         # 00:00:00 should be interpreted as next day
         assert event.duration == 7200.0  # 2 hours
         expected_end = np.datetime64("2024-01-02T00:00:00", "ns")
-        assert event.last_on == expected_end
+        assert event.stop_min == expected_end
 
     def test_from_merlin_same_time_wraps_to_next_day(self):
         """Test from_merlin with same start and end time does not wrap to next day."""
@@ -1052,7 +1052,7 @@ class TestEventFromMerlin:
             "01:00:00",
         )
         expected_end = np.datetime64("2024-02-29T01:00:00", "ns")
-        assert event.last_on == expected_end
+        assert event.stop_min == expected_end
 
     def test_from_merlin_year_boundary(self):
         """Test from_merlin spanning New Year's Eve."""
@@ -1062,7 +1062,7 @@ class TestEventFromMerlin:
             "01:00:00",
         )
         expected_end = np.datetime64("2024-01-01T01:00:00", "ns")
-        assert event.last_on == expected_end
+        assert event.stop_min == expected_end
 
     def test_from_merlin_year_boundary_compact(self):
         """Test from_merlin spanning New Year's Eve in compact format."""
@@ -1072,7 +1072,7 @@ class TestEventFromMerlin:
             "010000",
         )
         expected_end = np.datetime64("2024-01-01T01:00:00", "ns")
-        assert event.last_on == expected_end
+        assert event.stop_min == expected_end
 
     def test_from_merlin_creates_inner_interval(self):
         """Test that from_merlin creates inner interval."""
@@ -1081,24 +1081,24 @@ class TestEventFromMerlin:
             "10:00:00",
             "11:00:00",
         )
-        assert event.first_on is not None
-        assert event.last_on is not None
-        assert event.last_off is None
-        assert event.first_off is None
+        assert event.start_max is not None
+        assert event.stop_min is not None
+        assert event.start_min is None
+        assert event.stop_max is None
 
     def test_from_merlin_subseconds_different_lengths(self):
         """Test from_merlin with different subsecond precision."""
         # 3 digits (milliseconds)
         event1 = Event.from_merlin("20240101", "100000.123", "110000")
-        assert event1.first_on is not None
+        assert event1.start_max is not None
 
         # 6 digits (microseconds)
         event2 = Event.from_merlin("20240101", "100000.123456", "110000")
-        assert event2.first_on is not None
+        assert event2.start_max is not None
 
         # 9 digits (nanoseconds - should truncate to microseconds)
         event3 = Event.from_merlin("20240101", "100000.123456789", "110000")
-        assert event3.first_on is not None
+        assert event3.start_max is not None
 
     def test_from_merlin_invalid_date_format(self):
         """Test from_merlin with invalid date format."""
@@ -1135,7 +1135,7 @@ class TestEventFromMerlin:
         # Should span midnight
         # .999 becomes .999000 microseconds, .001 becomes .001000 microseconds
         expected_end = np.datetime64("2024-01-02T00:00:00.001000", "ns")
-        assert event.last_on == expected_end
+        assert event.stop_min == expected_end
         # Duration should be about 0.002 seconds
         assert abs(event.duration - 0.002) < 0.001
 
@@ -1146,8 +1146,8 @@ class TestEventDunderMethods:
     def test_contains_operator(self):
         """Test 'in' operator for timestamp containment."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         timestamp_inside = np.datetime64("2024-01-01T10:30:00", "ns")
         timestamp_outside = np.datetime64("2024-01-01T12:00:00", "ns")
@@ -1158,12 +1158,12 @@ class TestEventDunderMethods:
     def test_less_than_operator(self):
         """Test '<' operator for event comparison."""
         event1 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T12:00:00",
-            last_on="2024-01-01T13:00:00",
+            start_max="2024-01-01T12:00:00",
+            stop_min="2024-01-01T13:00:00",
         )
         assert event1 < event2
         assert not (event2 < event1)
@@ -1171,16 +1171,16 @@ class TestEventDunderMethods:
     def test_sorting_events(self):
         """Test that events can be sorted by start time."""
         event1 = Event(
-            first_on="2024-01-01T12:00:00",
-            last_on="2024-01-01T13:00:00",
+            start_max="2024-01-01T12:00:00",
+            stop_min="2024-01-01T13:00:00",
         )
         event2 = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         event3 = Event(
-            first_on="2024-01-01T14:00:00",
-            last_on="2024-01-01T15:00:00",
+            start_max="2024-01-01T14:00:00",
+            stop_min="2024-01-01T15:00:00",
         )
 
         events = [event1, event2, event3]
@@ -1197,8 +1197,8 @@ class TestEdgeCases:
     def test_zero_duration_event(self):
         """Test event with zero duration."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T10:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T10:00:00",
         )
         assert event.duration == 0.0
         assert event.is_point_event()  # Pythonic
@@ -1206,44 +1206,44 @@ class TestEdgeCases:
     def test_event_with_only_start_boundaries(self):
         """Test event with only start and one stop boundary."""
         event = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            first_off="2024-01-01T11:00:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_max="2024-01-01T11:00:00",
         )
-        assert event.last_off is not None
-        assert event.first_on is not None
-        assert event.last_on is None
-        assert event.first_off is not None
+        assert event.start_min is not None
+        assert event.start_max is not None
+        assert event.stop_min is None
+        assert event.stop_max is not None
 
     def test_event_spanning_midnight(self):
         """Test event that spans midnight."""
         event = Event(
-            first_on="2024-01-01T23:00:00",
-            last_on="2024-01-02T01:00:00",
+            start_max="2024-01-01T23:00:00",
+            stop_min="2024-01-02T01:00:00",
         )
         assert event.duration == 2 * 3600.0  # 2 hours
 
     def test_event_spanning_year_boundary(self):
         """Test event that spans year boundary."""
         event = Event(
-            first_on="2023-12-31T23:00:00",
-            last_on="2024-01-01T01:00:00",
+            start_max="2023-12-31T23:00:00",
+            stop_min="2024-01-01T01:00:00",
         )
         assert event.duration == 2 * 3600.0  # 2 hours
 
     def test_very_long_event(self):
         """Test event spanning multiple days."""
         event = Event(
-            first_on="2024-01-01T00:00:00",
-            last_on="2024-01-10T00:00:00",
+            start_max="2024-01-01T00:00:00",
+            stop_min="2024-01-10T00:00:00",
         )
         assert event.get_duration("D") == 9.0  # 9 days
 
     def test_microsecond_precision(self):
         """Test event with microsecond precision."""
         event = Event(
-            first_on="2024-01-01T10:00:00.000000",
-            last_on="2024-01-01T10:00:00.123456",
+            start_max="2024-01-01T10:00:00.000000",
+            stop_min="2024-01-01T10:00:00.123456",
         )
         duration_us = event.get_duration("us")
         assert abs(duration_us - 123456.0) < 1.0  # Allow small floating point error
@@ -1251,8 +1251,8 @@ class TestEdgeCases:
     def test_contains_with_different_datetime_unit(self):
         """Test contains with np.datetime64 of a different unit than stored (ns)."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         assert event.contains(np.datetime64("2024-01-01T10:30:00", "s")) is True
         assert event.contains(np.datetime64("2024-01-01T12:00:00", "s")) is False
@@ -1264,42 +1264,42 @@ class TestPydanticIntegration:
     def test_model_dump(self):
         """Test that event can be dumped to dict."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
             description="Test",
         )
         data = event.model_dump()
-        assert "first_on" in data
-        assert "last_on" in data
+        assert "start_max" in data
+        assert "stop_min" in data
         assert "description" in data
 
     def test_model_dump_json(self):
         """Test that event can be dumped to JSON."""
         event = Event(
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
         )
         json_str = event.model_dump_json()
         assert isinstance(json_str, str)
-        assert "first_on" in json_str
+        assert "start_max" in json_str
 
     def test_model_validate(self):
         """Test that event can be validated from dict."""
         data = {
-            "first_on": "2024-01-01T10:00:00",
-            "last_on": "2024-01-01T11:00:00",
+            "start_max": "2024-01-01T10:00:00",
+            "stop_min": "2024-01-01T11:00:00",
         }
         event = Event.model_validate(data)
-        assert event.first_on is not None
-        assert event.last_on is not None
+        assert event.start_max is not None
+        assert event.stop_min is not None
 
     def test_serialization_round_trip(self):
         """Test that event can be serialized and deserialized."""
         original = Event(
-            last_off="2024-01-01T09:55:00",
-            first_on="2024-01-01T10:00:00",
-            last_on="2024-01-01T11:00:00",
-            first_off="2024-01-01T11:05:00",
+            start_min="2024-01-01T09:55:00",
+            start_max="2024-01-01T10:00:00",
+            stop_min="2024-01-01T11:00:00",
+            stop_max="2024-01-01T11:05:00",
             description="Test event",
             color="#FF5733",
         )
@@ -1319,14 +1319,14 @@ class TestPydanticIntegration:
         only parses up to microseconds, so sub-microsecond digits are dropped.
         """
         original = Event(
-            first_on=np.datetime64("2024-01-01T10:00:00.123456789", "ns"),
-            last_on=np.datetime64("2024-01-01T11:00:00.987654321", "ns"),
+            start_max=np.datetime64("2024-01-01T10:00:00.123456789", "ns"),
+            stop_min=np.datetime64("2024-01-01T11:00:00.987654321", "ns"),
         )
         data = original.model_dump()
         restored = Event.model_validate(data)
         # Precision is truncated to microseconds after round-trip
-        assert restored.first_on == np.datetime64("2024-01-01T10:00:00.123456000", "ns")
-        assert restored.last_on == np.datetime64("2024-01-01T11:00:00.987654000", "ns")
+        assert restored.start_max == np.datetime64("2024-01-01T10:00:00.123456000", "ns")
+        assert restored.stop_min == np.datetime64("2024-01-01T11:00:00.987654000", "ns")
 
 
 if __name__ == "__main__":

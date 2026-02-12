@@ -21,42 +21,42 @@ class TestBasicOnOff:
     def test_two_events(self, capsys):
         events = run_cli(capsys, [str(DATA / "basic_on_off.txt")])
         assert len(events) == 2
-        assert events[0]["first_on"] == "2024-01-01T10:00:05.000000000"
-        assert events[0]["first_off"] == "2024-01-01T10:00:15.000000000"
-        assert events[1]["first_on"] == "2024-01-01T10:00:50.000000000"
-        assert events[1]["first_off"] == "2024-01-01T10:00:55.000000000"
+        assert events[0]["start_max"] == "2024-01-01T10:00:05.000000000"
+        assert events[0]["stop_max"] == "2024-01-01T10:00:15.000000000"
+        assert events[1]["start_max"] == "2024-01-01T10:00:50.000000000"
+        assert events[1]["stop_max"] == "2024-01-01T10:00:55.000000000"
 
     def test_case_insensitive(self, capsys):
         events = run_cli(capsys, [str(DATA / "case_insensitive.txt")])
         assert len(events) == 1
-        assert events[0]["first_on"] == "2024-01-01T10:00:05.000000000"
+        assert events[0]["start_max"] == "2024-01-01T10:00:05.000000000"
 
     def test_extra_columns_ignored(self, capsys):
         events = run_cli(capsys, [str(DATA / "extra_columns.txt")])
         assert len(events) == 1
-        assert events[0]["first_on"] == "2024-01-01T10:00:05.000000000"
+        assert events[0]["start_max"] == "2024-01-01T10:00:05.000000000"
 
 
 class TestAllOn:
     def test_all_on(self, capsys):
         events = run_cli(capsys, ["--all-on", str(DATA / "all_on.txt")])
         assert len(events) == 1
-        assert events[0]["first_on"] == "2024-01-01T10:00:00.000000000"
-        assert events[0]["last_on"] == "2024-01-01T10:00:10.000000000"
+        assert events[0]["start_max"] == "2024-01-01T10:00:00.000000000"
+        assert events[0]["stop_min"] == "2024-01-01T10:00:10.000000000"
 
     def test_all_on_extra_columns(self, capsys):
         events = run_cli(capsys, ["--all-on", str(DATA / "all_on_extra_columns.txt")])
         assert len(events) == 1
-        assert events[0]["first_on"] == "2024-01-01T10:00:00.000000000"
-        assert events[0]["last_on"] == "2024-01-01T10:00:05.000000000"
+        assert events[0]["start_max"] == "2024-01-01T10:00:00.000000000"
+        assert events[0]["stop_min"] == "2024-01-01T10:00:05.000000000"
 
 
 class TestCommentsAndBlanks:
     def test_comments_and_blanks_skipped(self, capsys):
         events = run_cli(capsys, [str(DATA / "comments_and_blanks.txt")])
         assert len(events) == 1
-        assert events[0]["first_on"] == "2024-01-01T10:00:00.000000000"
-        assert events[0]["last_on"] == "2024-01-01T10:00:05.000000000"
+        assert events[0]["start_max"] == "2024-01-01T10:00:00.000000000"
+        assert events[0]["stop_min"] == "2024-01-01T10:00:05.000000000"
 
     def test_empty_input_no_output(self, capsys):
         main([str(DATA / "empty.txt")])

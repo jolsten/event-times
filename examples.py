@@ -31,10 +31,10 @@ def example_basic_usage():
     print(f"\nNumber of events: {len(events)}")
     for i, event in enumerate(events, 1):
         print(f"\nEvent {i}:")
-        print(f"  Last off:  {event.last_off}")
-        print(f"  First on:  {event.first_on}")
-        print(f"  Last on:   {event.last_on}")
-        print(f"  First off: {event.first_off}")
+        print(f"  Last off:  {event.start_min}")
+        print(f"  First on:  {event.start_max}")
+        print(f"  Last on:   {event.stop_min}")
+        print(f"  First off: {event.stop_max}")
         print(f"  Start:     {event.start}")
         print(f"  Stop:      {event.stop}")
 
@@ -64,10 +64,10 @@ def example_machine_monitoring():
 
     print(f"\nMachine had {len(events)} operational periods:")
     for i, event in enumerate(events, 1):
-        duration = event.last_on - event.first_on
+        duration = event.stop_min - event.start_max
         print(f"\nPeriod {i}:")
-        print(f"  Started: {event.first_on}")
-        print(f"  Stopped: {event.last_on}")
+        print(f"  Started: {event.start_max}")
+        print(f"  Stopped: {event.stop_min}")
         print(f"  Duration: {duration}")
 
 
@@ -97,14 +97,14 @@ def example_time_gaps():
 
     print(f"\nWith default 60s threshold: {len(events)} events")
     for i, event in enumerate(events, 1):
-        print(f"  Event {i}: {event.first_on} to {event.last_on}")
+        print(f"  Event {i}: {event.start_max} to {event.stop_min}")
 
     # With a larger threshold, it's treated as one continuous event
     events_large = on_off_times(timestamps, states, max_gap=np.timedelta64(10, "m"))
 
     print(f"\nWith 10-minute threshold: {len(events_large)} event")
     for i, event in enumerate(events_large, 1):
-        print(f"  Event {i}: {event.first_on} to {event.last_on}")
+        print(f"  Event {i}: {event.start_max} to {event.stop_min}")
 
 
 def example_sensor_data():
@@ -163,15 +163,15 @@ def example_edge_cases():
     states1 = np.array([True, True, False])
 
     events1 = on_off_times(timestamps1, states1)
-    print(f"  last_off: {events1[0].last_off} (None because series starts on)")
-    print(f"  first_on: {events1[0].first_on}")
+    print(f"  start_min: {events1[0].start_min} (None because series starts on)")
+    print(f"  start_max: {events1[0].start_max}")
 
     # Case 2: Series ends with True
     print("\nCase 2: Series ends with True state")
     states2 = np.array([False, True, True])
     events2 = on_off_times(timestamps1, states2)
-    print(f"  last_on: {events2[0].last_on}")
-    print(f"  first_off: {events2[0].first_off} (None because series ends on)")
+    print(f"  stop_min: {events2[0].stop_min}")
+    print(f"  stop_max: {events2[0].stop_max} (None because series ends on)")
 
     # Case 3: All False
     print("\nCase 3: All states are False")
@@ -184,7 +184,7 @@ def example_edge_cases():
     states4 = np.array([True, True, True])
     events4 = on_off_times(timestamps1, states4)
     print(f"  Number of events: {len(events4)}")
-    print(f"  Spans entire series: {events4[0].first_on} to {events4[0].last_on}")
+    print(f"  Spans entire series: {events4[0].start_max} to {events4[0].stop_min}")
 
 
 def example_using_event_properties():

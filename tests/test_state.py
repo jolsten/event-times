@@ -69,10 +69,10 @@ class TestSingleBatchEquivalence:
 
         assert len(result) == len(expected)
         for r, e in zip(result, expected):
-            assert r.last_off == e.last_off
-            assert r.first_on == e.first_on
-            assert r.last_on == e.last_on
-            assert r.first_off == e.first_off
+            assert r.start_min == e.start_min
+            assert r.start_max == e.start_max
+            assert r.stop_min == e.stop_min
+            assert r.stop_max == e.stop_max
 
     def test_single_event_in_middle(self):
         time = np.array(
@@ -94,10 +94,10 @@ class TestSingleBatchEquivalence:
         result = proc.get_events()
 
         assert len(result) == 1
-        assert result[0].last_off == expected[0].last_off
-        assert result[0].first_on == expected[0].first_on
-        assert result[0].last_on == expected[0].last_on
-        assert result[0].first_off == expected[0].first_off
+        assert result[0].start_min == expected[0].start_min
+        assert result[0].start_max == expected[0].start_max
+        assert result[0].stop_min == expected[0].stop_min
+        assert result[0].stop_max == expected[0].stop_max
 
     def test_multiple_events(self):
         time = np.array(
@@ -122,10 +122,10 @@ class TestSingleBatchEquivalence:
 
         assert len(result) == len(expected)
         for r, e in zip(result, expected):
-            assert r.last_off == e.last_off
-            assert r.first_on == e.first_on
-            assert r.last_on == e.last_on
-            assert r.first_off == e.first_off
+            assert r.start_min == e.start_min
+            assert r.start_max == e.start_max
+            assert r.stop_min == e.stop_min
+            assert r.stop_max == e.stop_max
 
     def test_single_batch_with_internal_gap(self):
         time = np.array(
@@ -147,10 +147,10 @@ class TestSingleBatchEquivalence:
 
         assert len(result) == len(expected)
         for r, e in zip(result, expected):
-            assert r.last_off == e.last_off
-            assert r.first_on == e.first_on
-            assert r.last_on == e.last_on
-            assert r.first_off == e.first_off
+            assert r.start_min == e.start_min
+            assert r.start_max == e.start_max
+            assert r.stop_min == e.stop_min
+            assert r.stop_max == e.stop_max
 
 
 class TestCrossBatchContinuation:
@@ -175,10 +175,10 @@ class TestCrossBatchContinuation:
         result = proc.get_events()
 
         assert len(result) == 1
-        assert result[0].last_off == _ts("2024-01-01T00:00:00")
-        assert result[0].first_on == _ts("2024-01-01T00:01:00")
-        assert result[0].last_on == _ts("2024-01-01T00:02:00")
-        assert result[0].first_off == _ts("2024-01-01T00:03:00")
+        assert result[0].start_min == _ts("2024-01-01T00:00:00")
+        assert result[0].start_max == _ts("2024-01-01T00:01:00")
+        assert result[0].stop_min == _ts("2024-01-01T00:02:00")
+        assert result[0].stop_max == _ts("2024-01-01T00:03:00")
 
     def test_event_spans_three_batches(self):
         """Event continues across three consecutive batches."""
@@ -205,10 +205,10 @@ class TestCrossBatchContinuation:
         result = proc.get_events()
 
         assert len(result) == 1
-        assert result[0].last_off == _ts("2024-01-01T00:00:00")
-        assert result[0].first_on == _ts("2024-01-01T00:01:00")
-        assert result[0].last_on == _ts("2024-01-01T00:04:00")
-        assert result[0].first_off == _ts("2024-01-01T00:05:00")
+        assert result[0].start_min == _ts("2024-01-01T00:00:00")
+        assert result[0].start_max == _ts("2024-01-01T00:01:00")
+        assert result[0].stop_min == _ts("2024-01-01T00:04:00")
+        assert result[0].stop_max == _ts("2024-01-01T00:05:00")
 
     def test_pending_closed_by_false_start(self):
         """Batch1 ends True, Batch2 starts False, small gap → event closed."""
@@ -229,10 +229,10 @@ class TestCrossBatchContinuation:
         result = proc.get_events()
 
         assert len(result) == 1
-        assert result[0].last_off == _ts("2024-01-01T00:00:00")
-        assert result[0].first_on == _ts("2024-01-01T00:01:00")
-        assert result[0].last_on == _ts("2024-01-01T00:01:00")
-        assert result[0].first_off == _ts("2024-01-01T00:02:00")
+        assert result[0].start_min == _ts("2024-01-01T00:00:00")
+        assert result[0].start_max == _ts("2024-01-01T00:01:00")
+        assert result[0].stop_min == _ts("2024-01-01T00:01:00")
+        assert result[0].stop_max == _ts("2024-01-01T00:02:00")
 
     def test_large_gap_between_batches(self):
         """Large gap breaks pending event, second batch starts fresh."""
@@ -253,23 +253,23 @@ class TestCrossBatchContinuation:
         result = proc.get_events()
 
         assert len(result) == 2
-        # First event: closed with first_off=None (gap boundary)
-        assert result[0].last_off == _ts("2024-01-01T00:00:00")
-        assert result[0].first_on == _ts("2024-01-01T00:01:00")
-        assert result[0].last_on == _ts("2024-01-01T00:01:00")
-        assert result[0].first_off is None
-        # Second event: last_off=None (gap boundary)
-        assert result[1].last_off is None
-        assert result[1].first_on == _ts("2024-01-01T01:00:00")
-        assert result[1].last_on == _ts("2024-01-01T01:00:00")
-        assert result[1].first_off == _ts("2024-01-01T01:01:00")
+        # First event: closed with stop_max=None (gap boundary)
+        assert result[0].start_min == _ts("2024-01-01T00:00:00")
+        assert result[0].start_max == _ts("2024-01-01T00:01:00")
+        assert result[0].stop_min == _ts("2024-01-01T00:01:00")
+        assert result[0].stop_max is None
+        # Second event: start_min=None (gap boundary)
+        assert result[1].start_min is None
+        assert result[1].start_max == _ts("2024-01-01T01:00:00")
+        assert result[1].stop_min == _ts("2024-01-01T01:00:00")
+        assert result[1].stop_max == _ts("2024-01-01T01:01:00")
 
 
 class TestCrossBatchLastOff:
-    """Tests that last_off is correctly inherited from previous batch."""
+    """Tests that start_min is correctly inherited from previous batch."""
 
-    def test_last_off_from_previous_batch(self):
-        """New True run at batch start gets last_off from previous batch's last sample."""
+    def test_start_min_from_previous_batch(self):
+        """New True run at batch start gets start_min from previous batch's last sample."""
         time1 = np.array(
             ["2024-01-01T00:00:00", "2024-01-01T00:01:00"], dtype="datetime64"
         )
@@ -287,11 +287,11 @@ class TestCrossBatchLastOff:
         result = proc.get_events()
 
         assert len(result) == 2
-        # Second event should have last_off = last sample of batch1
-        assert result[1].last_off == _ts("2024-01-01T00:01:00")
+        # Second event should have start_min = last sample of batch1
+        assert result[1].start_min == _ts("2024-01-01T00:01:00")
 
-    def test_last_off_none_after_large_gap(self):
-        """New run at batch start after large gap gets last_off=None."""
+    def test_start_min_none_after_large_gap(self):
+        """New run at batch start after large gap gets start_min=None."""
         time1 = np.array(["2024-01-01T00:00:00"], dtype="datetime64")
         state1 = np.array([False])
 
@@ -307,7 +307,7 @@ class TestCrossBatchLastOff:
         result = proc.get_events()
 
         assert len(result) == 1
-        assert result[0].last_off is None
+        assert result[0].start_min is None
 
 
 class TestEventProperties:
@@ -439,7 +439,7 @@ class TestFinalize:
         proc.finalize()
         result = proc.get_events()
         assert len(result) == 1
-        assert result[0].first_off is None
+        assert result[0].stop_max is None
 
     def test_processing_after_finalize(self):
         """Processing more batches after finalize works correctly."""
@@ -479,10 +479,10 @@ class TestEdgeCases:
         result = proc.get_events()
 
         assert len(result) == 1
-        assert result[0].last_off is None
-        assert result[0].first_on == _ts("2024-01-01T00:00:00")
-        assert result[0].last_on == _ts("2024-01-01T00:00:00")
-        assert result[0].first_off is None
+        assert result[0].start_min is None
+        assert result[0].start_max == _ts("2024-01-01T00:00:00")
+        assert result[0].stop_min == _ts("2024-01-01T00:00:00")
+        assert result[0].stop_max is None
 
     def test_single_false_sample(self):
         time = np.array(["2024-01-01T00:00:00"], dtype="datetime64")
@@ -512,7 +512,7 @@ class TestEdgeCases:
         result = proc.get_events()
 
         assert len(result) == 1
-        assert result[0].first_off == _ts("2024-01-01T00:02:00")
+        assert result[0].stop_max == _ts("2024-01-01T00:02:00")
 
     def test_alternating_single_sample_batches(self):
         """Each batch is a single sample, alternating True/False."""
@@ -528,15 +528,15 @@ class TestEdgeCases:
 
         assert len(result) == 2
         # First event
-        assert result[0].last_off == _ts("2024-01-01T00:00:00")
-        assert result[0].first_on == _ts("2024-01-01T00:01:00")
-        assert result[0].last_on == _ts("2024-01-01T00:01:00")
-        assert result[0].first_off == _ts("2024-01-01T00:02:00")
+        assert result[0].start_min == _ts("2024-01-01T00:00:00")
+        assert result[0].start_max == _ts("2024-01-01T00:01:00")
+        assert result[0].stop_min == _ts("2024-01-01T00:01:00")
+        assert result[0].stop_max == _ts("2024-01-01T00:02:00")
         # Second event
-        assert result[1].last_off == _ts("2024-01-01T00:02:00")
-        assert result[1].first_on == _ts("2024-01-01T00:03:00")
-        assert result[1].last_on == _ts("2024-01-01T00:03:00")
-        assert result[1].first_off == _ts("2024-01-01T00:04:00")
+        assert result[1].start_min == _ts("2024-01-01T00:02:00")
+        assert result[1].start_max == _ts("2024-01-01T00:03:00")
+        assert result[1].stop_min == _ts("2024-01-01T00:03:00")
+        assert result[1].stop_max == _ts("2024-01-01T00:04:00")
 
     def test_empty_batch_between_batches(self):
         """Empty batch does not disrupt state tracking."""
@@ -558,5 +558,5 @@ class TestEdgeCases:
         result = proc.get_events()
 
         assert len(result) == 1
-        assert result[0].first_on == _ts("2024-01-01T00:01:00")
-        assert result[0].last_on == _ts("2024-01-01T00:02:00")
+        assert result[0].start_max == _ts("2024-01-01T00:01:00")
+        assert result[0].stop_min == _ts("2024-01-01T00:02:00")

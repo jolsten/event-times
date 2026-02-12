@@ -181,22 +181,22 @@ class Event(BaseModel):
     start and stop times may be uncertain. The event is bounded by four optional
     timestamps that define inner and outer intervals:
 
-    - last_off: Latest time the event was definitely not occurring (before start)
-    - first_on: Earliest time the event was definitely occurring (start bound)
-    - last_on: Latest time the event was definitely occurring (stop bound)
-    - first_off: Earliest time the event was definitely not occurring (after stop)
+    - start_min: Latest time the event was definitely not occurring (before start)
+    - start_max: Earliest time the event was definitely occurring (start bound)
+    - stop_min: Latest time the event was definitely occurring (stop bound)
+    - stop_max: Earliest time the event was definitely not occurring (after stop)
 
     Timeline visualization:
-        last_off <= [uncertain] <= first_on <= last_on <= [uncertain] <= first_off
+        start_min <= [uncertain] <= start_max <= stop_min <= [uncertain] <= stop_max
 
     Attributes:
-        last_off: Latest timestamp before the event definitely started.
+        start_min: Latest timestamp before the event definitely started.
             Accepts string, np.datetime64, or datetime.datetime.
-        first_on: Earliest timestamp when the event was definitely active.
+        start_max: Earliest timestamp when the event was definitely active.
             Accepts string, np.datetime64, or datetime.datetime.
-        last_on: Latest timestamp when the event was definitely active.
+        stop_min: Latest timestamp when the event was definitely active.
             Accepts string, np.datetime64, or datetime.datetime.
-        first_off: Earliest timestamp after the event definitely stopped.
+        stop_max: Earliest timestamp after the event definitely stopped.
             Accepts string, np.datetime64, or datetime.datetime.
         description: Optional human-readable description of the event.
         color: Optional color code for visualization (e.g., hex color).
@@ -204,10 +204,10 @@ class Event(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    last_off: Optional[DateTime] = None
-    first_on: Optional[DateTime] = None
-    last_on: Optional[DateTime] = None
-    first_off: Optional[DateTime] = None
+    start_min: Optional[DateTime] = None
+    start_max: Optional[DateTime] = None
+    stop_min: Optional[DateTime] = None
+    stop_max: Optional[DateTime] = None
     description: Optional[str] = None
     color: Optional[str] = None
 
@@ -222,27 +222,27 @@ class Event(BaseModel):
             ValueError: If the event lacks required start/stop times or has
                 invalid time ordering.
         """
-        if (self.last_off is None) and (self.first_on is None):
+        if (self.start_min is None) and (self.start_max is None):
             raise ValueError(
-                "Event must have at least one start time (last_off or first_on)"
+                "Event must have at least one start time (start_min or start_max)"
             )
-        if (self.last_on is None) and (self.first_off is None):
+        if (self.stop_min is None) and (self.stop_max is None):
             raise ValueError(
-                "Event must have at least one stop time (last_on or first_off)"
+                "Event must have at least one stop time (stop_min or stop_max)"
             )
 
         # Check internal ordering constraints
-        if self.last_off is not None and self.first_on is not None:
-            if self.last_off > self.first_on:
-                raise ValueError("last_off must precede or equal first_on")
+        if self.start_min is not None and self.start_max is not None:
+            if self.start_min > self.start_max:
+                raise ValueError("start_min must precede or equal start_max")
 
-        if self.first_on is not None and self.last_on is not None:
-            if self.first_on > self.last_on:
-                raise ValueError("first_on must precede or equal last_on")
+        if self.start_max is not None and self.stop_min is not None:
+            if self.start_max > self.stop_min:
+                raise ValueError("start_max must precede or equal stop_min")
 
-        if self.last_on is not None and self.first_off is not None:
-            if self.last_on > self.first_off:
-                raise ValueError("last_on must precede or equal first_off")
+        if self.stop_min is not None and self.stop_max is not None:
+            if self.stop_min > self.stop_max:
+                raise ValueError("stop_min must precede or equal stop_max")
 
         # Check overall validity
         if self.duration < 0:
@@ -262,35 +262,35 @@ class Event(BaseModel):
         """Get all four boundary timestamps as a tuple.
 
         Returns:
-            A tuple of (last_off, first_on, last_on, first_off).
+            A tuple of (start_min, start_max, stop_min, stop_max).
         """
-        return (self.last_off, self.first_on, self.last_on, self.first_off)
+        return (self.start_min, self.start_max, self.stop_min, self.stop_max)
 
     @property
     def start(self) -> np.datetime64:
         """Get the best estimate of the event start time.
 
-        Prefers first_on (earliest definite occurrence) over last_off.
+        Prefers start_max (earliest definite occurrence) over start_min.
 
         Returns:
             The start timestamp of the event.
         """
-        if self.first_on is not None:
-            return self.first_on
-        return self.last_off  # type: ignore - object is invalid if both starts are None
+        if self.start_max is not None:
+            return self.start_max
+        return self.start_min  # type: ignore - object is invalid if both starts are None
 
     @property
     def stop(self) -> np.datetime64:
         """Get the best estimate of the event stop time.
 
-        Prefers last_on (latest definite occurrence) over first_off.
+        Prefers stop_min (latest definite occurrence) over stop_max.
 
         Returns:
             The stop timestamp of the event.
         """
-        if self.last_on is not None:
-            return self.last_on
-        return self.first_off  # type: ignore - object is invalid if both stops are None
+        if self.stop_min is not None:
+            return self.stop_min
+        return self.stop_max  # type: ignore - object is invalid if both stops are None
 
     @property
     def duration(self) -> float:
@@ -306,28 +306,28 @@ class Event(BaseModel):
         """Get the interval when the event was definitely occurring.
 
         Returns:
-            A tuple of (first_on, last_on) representing the guaranteed active period.
+            A tuple of (start_max, stop_min) representing the guaranteed active period.
         """
-        return (self.first_on, self.last_on)
+        return (self.start_max, self.stop_min)
 
     @property
     def outer_interval(self) -> tuple[Optional[np.datetime64], Optional[np.datetime64]]:
         """Get the interval that fully bounds the event including uncertainty.
 
         Returns:
-            A tuple of (last_off, first_off) representing the outer boundary.
+            A tuple of (start_min, stop_max) representing the outer boundary.
         """
-        return (self.last_off, self.first_off)
+        return (self.start_min, self.stop_max)
 
     @property
     def uncertainty_start(self) -> Optional[float]:
         """Get the temporal uncertainty at the event start in seconds.
 
         Returns:
-            The duration between last_off and first_on, or None if either is missing.
+            The duration between start_min and start_max, or None if either is missing.
         """
-        if self.last_off is not None and self.first_on is not None:
-            return (self.first_on - self.last_off) / np.timedelta64(1, "s")
+        if self.start_min is not None and self.start_max is not None:
+            return (self.start_max - self.start_min) / np.timedelta64(1, "s")
         return None
 
     @property
@@ -335,10 +335,10 @@ class Event(BaseModel):
         """Get the temporal uncertainty at the event stop in seconds.
 
         Returns:
-            The duration between last_on and first_off, or None if either is missing.
+            The duration between stop_min and stop_max, or None if either is missing.
         """
-        if self.last_on is not None and self.first_off is not None:
-            return (self.first_off - self.last_on) / np.timedelta64(1, "s")
+        if self.stop_min is not None and self.stop_max is not None:
+            return (self.stop_max - self.stop_min) / np.timedelta64(1, "s")
         return None
 
     @property
@@ -426,9 +426,9 @@ class Event(BaseModel):
         Returns:
             True if the timestamp is in the inner interval, False otherwise.
         """
-        if self.first_on is None or self.last_on is None:
+        if self.start_max is None or self.stop_min is None:
             return False
-        return bool(self.first_on <= timestamp <= self.last_on)
+        return bool(self.start_max <= timestamp <= self.stop_min)
 
     def gap_between(self, other: "Event") -> float:
         """Calculate the temporal gap between this event and another.
@@ -485,32 +485,32 @@ class Event(BaseModel):
         # If an outer boundary (definite OFF) falls within the other event's
         # inner interval (definite ON), the events are contradictory
         if (
-            first.first_off is not None
-            and second.first_on is not None
-            and second.last_on is not None
+            first.stop_max is not None
+            and second.start_max is not None
+            and second.stop_min is not None
         ):
-            if second.first_on <= first.first_off <= second.last_on:
+            if second.start_max <= first.stop_max <= second.stop_min:
                 return None
         if (
-            first.last_off is not None
-            and second.first_on is not None
-            and second.last_on is not None
+            first.start_min is not None
+            and second.start_max is not None
+            and second.stop_min is not None
         ):
-            if second.first_on <= first.last_off <= second.last_on:
+            if second.start_max <= first.start_min <= second.stop_min:
                 return None
         if (
-            second.first_off is not None
-            and first.first_on is not None
-            and first.last_on is not None
+            second.stop_max is not None
+            and first.start_max is not None
+            and first.stop_min is not None
         ):
-            if first.first_on <= second.first_off <= first.last_on:
+            if first.start_max <= second.stop_max <= first.stop_min:
                 return None
         if (
-            second.last_off is not None
-            and first.first_on is not None
-            and first.last_on is not None
+            second.start_min is not None
+            and first.start_max is not None
+            and first.stop_min is not None
         ):
-            if first.first_on <= second.last_off <= first.last_on:
+            if first.start_max <= second.start_min <= first.stop_min:
                 return None
 
         # Check if events overlap or are within max_gap
@@ -520,9 +520,9 @@ class Event(BaseModel):
                 return None
 
             # Don't merge if there's a definite OFF between events
-            # first.first_off means we know the state was OFF after first event
-            # second.last_off means we know the state was OFF before second event
-            if first.first_off is not None or second.last_off is not None:
+            # first.stop_max means we know the state was OFF after first event
+            # second.start_min means we know the state was OFF before second event
+            if first.stop_max is not None or second.start_min is not None:
                 return None
 
         if description is not None:
@@ -536,37 +536,37 @@ class Event(BaseModel):
         merged_color = color if color is not None else self.color
 
         # Compute merged inner interval
-        merged_first_on = (
-            min(t for t in [self.first_on, other.first_on] if t is not None)
-            if self.first_on is not None or other.first_on is not None
+        merged_start_max = (
+            min(t for t in [self.start_max, other.start_max] if t is not None)
+            if self.start_max is not None or other.start_max is not None
             else None
         )
-        merged_last_on = (
-            max(t for t in [self.last_on, other.last_on] if t is not None)
-            if self.last_on is not None or other.last_on is not None
+        merged_stop_min = (
+            max(t for t in [self.stop_min, other.stop_min] if t is not None)
+            if self.stop_min is not None or other.stop_min is not None
             else None
         )
 
         # Only use outer boundaries that are actually outside the merged inner interval
-        valid_last_offs = [
+        valid_start_mins = [
             t
-            for t in [self.last_off, other.last_off]
-            if t is not None and (merged_first_on is None or t < merged_first_on)
+            for t in [self.start_min, other.start_min]
+            if t is not None and (merged_start_max is None or t < merged_start_max)
         ]
-        merged_last_off = min(valid_last_offs) if valid_last_offs else None
+        merged_start_min = min(valid_start_mins) if valid_start_mins else None
 
-        valid_first_offs = [
+        valid_stop_maxs = [
             t
-            for t in [self.first_off, other.first_off]
-            if t is not None and (merged_last_on is None or t > merged_last_on)
+            for t in [self.stop_max, other.stop_max]
+            if t is not None and (merged_stop_min is None or t > merged_stop_min)
         ]
-        merged_first_off = max(valid_first_offs) if valid_first_offs else None
+        merged_stop_max = max(valid_stop_maxs) if valid_stop_maxs else None
 
         return Event(
-            last_off=merged_last_off,
-            first_on=merged_first_on,
-            last_on=merged_last_on,
-            first_off=merged_first_off,
+            start_min=merged_start_min,
+            start_max=merged_start_max,
+            stop_min=merged_stop_min,
+            stop_max=merged_stop_max,
             description=merged_description,
             color=merged_color,
         )
@@ -612,15 +612,15 @@ class Event(BaseModel):
 
         if interval_type == "inner":
             return cls(
-                first_on=start_dt,
-                last_on=stop_dt,
+                start_max=start_dt,
+                stop_min=stop_dt,
                 description=description,
                 color=color,
             )
         else:  # outer
             return cls(
-                last_off=start_dt,
-                first_off=stop_dt,
+                start_min=start_dt,
+                stop_max=stop_dt,
                 description=description,
                 color=color,
             )
@@ -693,15 +693,15 @@ class Event(BaseModel):
 
         if interval_type == "inner":
             return cls(
-                first_on=start_dt,
-                last_on=stop_dt,
+                start_max=start_dt,
+                stop_min=stop_dt,
                 description=description,
                 color=color,
             )
         else:  # outer
             return cls(
-                last_off=start_dt,
-                first_off=stop_dt,
+                start_min=start_dt,
+                stop_max=stop_dt,
                 description=description,
                 color=color,
             )
@@ -768,8 +768,8 @@ class Event(BaseModel):
             end_dt = end_dt_same_day
 
         return cls(
-            first_on=start_dt,
-            last_on=end_dt,
+            start_max=start_dt,
+            stop_min=end_dt,
             description=description,
             color=color,
         )

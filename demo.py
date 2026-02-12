@@ -46,10 +46,10 @@ def demo_basic_usage():
     print(f"\nDetected {len(events)} event(s):")
     for i, event in enumerate(events, 1):
         print(f"\nEvent {i}:")
-        print(f"  last_off:  {event.last_off}")
-        print(f"  first_on:  {event.first_on}")
-        print(f"  last_on:   {event.last_on}")
-        print(f"  first_off: {event.first_off}")
+        print(f"  start_min:  {event.start_min}")
+        print(f"  start_max:  {event.start_max}")
+        print(f"  stop_min:   {event.stop_min}")
+        print(f"  stop_max: {event.stop_max}")
 
 
 def demo_event_properties():
@@ -71,10 +71,10 @@ def demo_event_properties():
     event = events[0]
 
     print("\nEvent timestamps:")
-    print(f"  last_off:  {event.last_off}")
-    print(f"  first_on:  {event.first_on}")
-    print(f"  last_on:   {event.last_on}")
-    print(f"  first_off: {event.first_off}")
+    print(f"  start_min:  {event.start_min}")
+    print(f"  start_max:  {event.start_max}")
+    print(f"  stop_min:   {event.stop_min}")
+    print(f"  stop_max: {event.stop_max}")
 
     print("\nEvent properties:")
     print(f"  start:          {event.start}")
@@ -116,13 +116,13 @@ def demo_time_gaps():
     events_default = on_off_times(timestamps, states)
     print(f"\nWith default 60s threshold: {len(events_default)} events")
     for i, event in enumerate(events_default, 1):
-        print(f"  Event {i}: {event.first_on} to {event.last_on}")
+        print(f"  Event {i}: {event.start_max} to {event.stop_min}")
 
     # With large threshold
     events_large = on_off_times(timestamps, states, max_gap=np.timedelta64(10, "m"))
     print(f"\nWith 10-minute threshold: {len(events_large)} event(s)")
     for i, event in enumerate(events_large, 1):
-        print(f"  Event {i}: {event.first_on} to {event.last_on}")
+        print(f"  Event {i}: {event.start_max} to {event.stop_min}")
 
 
 def demo_edge_cases():
@@ -142,15 +142,15 @@ def demo_edge_cases():
     print("\nCase 1: Series starts in ON state")
     states1 = np.array([True, True, False])
     events1 = on_off_times(timestamps, states1)
-    print(f"  last_off:  {events1[0].last_off} <- None (no prior OFF)")
-    print(f"  first_on:  {events1[0].first_on}")
+    print(f"  start_min:  {events1[0].start_min} <- None (no prior OFF)")
+    print(f"  start_max:  {events1[0].start_max}")
 
     # Case 2: Series ends with True
     print("\nCase 2: Series ends in ON state")
     states2 = np.array([False, True, True])
     events2 = on_off_times(timestamps, states2)
-    print(f"  last_on:   {events2[0].last_on}")
-    print(f"  first_off: {events2[0].first_off} <- None (no subsequent OFF)")
+    print(f"  stop_min:   {events2[0].stop_min}")
+    print(f"  stop_max: {events2[0].stop_max} <- None (no subsequent OFF)")
 
     # Case 3: All False
     print("\nCase 3: All states are OFF")
@@ -163,9 +163,9 @@ def demo_edge_cases():
     states4 = np.array([True, True, True])
     events4 = on_off_times(timestamps, states4)
     print(f"  Events: {len(events4)} event")
-    print(f"  Spans: {events4[0].first_on} to {events4[0].last_on}")
-    print(f"  last_off:  {events4[0].last_off}")
-    print(f"  first_off: {events4[0].first_off}")
+    print(f"  Spans: {events4[0].start_max} to {events4[0].stop_min}")
+    print(f"  start_min:  {events4[0].start_min}")
+    print(f"  stop_max: {events4[0].stop_max}")
 
 
 def demo_multiple_events():
@@ -196,14 +196,14 @@ def demo_multiple_events():
     print(f"\nDetected {len(events)} events:")
     for i, event in enumerate(events, 1):
         duration = (
-            (event.last_on - event.first_on)
-            if event.first_on and event.last_on
+            (event.stop_min - event.start_max)
+            if event.start_max and event.stop_min
             else None
         )
         print(f"\nEvent {i}:")
-        print(f"  Period: {event.first_on} to {event.last_on}")
+        print(f"  Period: {event.start_max} to {event.stop_min}")
         print(f"  Duration: {duration}")
-        print(f"  Boundaries: {event.last_off} -> {event.first_off}")
+        print(f"  Boundaries: {event.start_min} -> {event.stop_max}")
 
 
 def demo_validation():
@@ -276,8 +276,8 @@ def demo_real_world_scenario():
     total_uptime = np.timedelta64(0, "s")
 
     for i, event in enumerate(events, 1):
-        start = event.first_on
-        stop = event.last_on
+        start = event.start_max
+        stop = event.stop_min
         duration = stop - start
         total_uptime += duration
 

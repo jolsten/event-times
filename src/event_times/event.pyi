@@ -17,10 +17,10 @@ def validate_datetime(value: DateTimeLike) -> np.datetime64: ...
 class Event(BaseModel):
     """Event with uncertain temporal boundaries."""
     
-    last_off: Optional[np.datetime64]
-    first_on: Optional[np.datetime64]
-    last_on: Optional[np.datetime64]
-    first_off: Optional[np.datetime64]
+    start_min: Optional[np.datetime64]
+    start_max: Optional[np.datetime64]
+    stop_min: Optional[np.datetime64]
+    stop_max: Optional[np.datetime64]
     description: Optional[str]
     color: Optional[str]
     
@@ -28,10 +28,10 @@ class Event(BaseModel):
     def __init__(
         self,
         *,
-        last_off: Optional[DateTimeLike] = None,
-        first_on: Optional[DateTimeLike] = None,
-        last_on: Optional[DateTimeLike] = None,
-        first_off: Optional[DateTimeLike] = None,
+        start_min: Optional[DateTimeLike] = None,
+        start_max: Optional[DateTimeLike] = None,
+        stop_min: Optional[DateTimeLike] = None,
+        stop_max: Optional[DateTimeLike] = None,
         description: Optional[str] = None,
         color: Optional[str] = None,
     ) -> None: ...

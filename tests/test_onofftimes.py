@@ -43,10 +43,10 @@ class TestInputValidation:
         states = np.array([True])
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
-        assert events[0].last_off is None
-        assert events[0].first_on == timestamps[0]
-        assert events[0].last_on == timestamps[0]
-        assert events[0].first_off is None
+        assert events[0].start_min is None
+        assert events[0].start_max == timestamps[0]
+        assert events[0].stop_min == timestamps[0]
+        assert events[0].stop_max is None
 
 
 class TestBasicFunctionality:
@@ -71,10 +71,10 @@ class TestBasicFunctionality:
         states = np.array([True, True, True])
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
-        assert events[0].last_off is None
-        assert events[0].first_on == timestamps[0]
-        assert events[0].last_on == timestamps[-1]
-        assert events[0].first_off is None
+        assert events[0].start_min is None
+        assert events[0].start_max == timestamps[0]
+        assert events[0].stop_min == timestamps[-1]
+        assert events[0].stop_max is None
 
     def test_single_true_in_middle(self):
         """Test single True state surrounded by False states."""
@@ -85,10 +85,10 @@ class TestBasicFunctionality:
         states = np.array([False, True, False])
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
-        assert events[0].last_off == timestamps[0]
-        assert events[0].first_on == timestamps[1]
-        assert events[0].last_on == timestamps[1]
-        assert events[0].first_off == timestamps[2]
+        assert events[0].start_min == timestamps[0]
+        assert events[0].start_max == timestamps[1]
+        assert events[0].stop_min == timestamps[1]
+        assert events[0].stop_max == timestamps[2]
 
     def test_starts_true_ends_false(self):
         """Test series starting with True and ending with False."""
@@ -99,10 +99,10 @@ class TestBasicFunctionality:
         states = np.array([True, True, False])
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
-        assert events[0].last_off is None
-        assert events[0].first_on == timestamps[0]
-        assert events[0].last_on == timestamps[1]
-        assert events[0].first_off == timestamps[2]
+        assert events[0].start_min is None
+        assert events[0].start_max == timestamps[0]
+        assert events[0].stop_min == timestamps[1]
+        assert events[0].stop_max == timestamps[2]
 
     def test_starts_false_ends_true(self):
         """Test series starting with False and ending with True."""
@@ -113,10 +113,10 @@ class TestBasicFunctionality:
         states = np.array([False, True, True])
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
-        assert events[0].last_off == timestamps[0]
-        assert events[0].first_on == timestamps[1]
-        assert events[0].last_on == timestamps[2]
-        assert events[0].first_off is None
+        assert events[0].start_min == timestamps[0]
+        assert events[0].start_max == timestamps[1]
+        assert events[0].stop_min == timestamps[2]
+        assert events[0].stop_max is None
 
     def test_multiple_events(self):
         """Test multiple distinct on/off events."""
@@ -135,16 +135,16 @@ class TestBasicFunctionality:
         assert len(events) == 2
 
         # First event
-        assert events[0].last_off == timestamps[0]
-        assert events[0].first_on == timestamps[1]
-        assert events[0].last_on == timestamps[1]
-        assert events[0].first_off == timestamps[2]
+        assert events[0].start_min == timestamps[0]
+        assert events[0].start_max == timestamps[1]
+        assert events[0].stop_min == timestamps[1]
+        assert events[0].stop_max == timestamps[2]
 
         # Second event
-        assert events[1].last_off == timestamps[2]
-        assert events[1].first_on == timestamps[3]
-        assert events[1].last_on == timestamps[3]
-        assert events[1].first_off == timestamps[4]
+        assert events[1].start_min == timestamps[2]
+        assert events[1].start_max == timestamps[3]
+        assert events[1].stop_min == timestamps[3]
+        assert events[1].stop_max == timestamps[4]
 
 
 class TestTimeGapHandling:
@@ -165,17 +165,17 @@ class TestTimeGapHandling:
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 2
 
-        # First event: starts at series start (last_off=None), split by gap (first_off=None)
-        assert events[0].last_off is None
-        assert events[0].first_on == timestamps[0]
-        assert events[0].last_on == timestamps[1]
-        assert events[0].first_off is None
+        # First event: starts at series start (start_min=None), split by gap (stop_max=None)
+        assert events[0].start_min is None
+        assert events[0].start_max == timestamps[0]
+        assert events[0].stop_min == timestamps[1]
+        assert events[0].stop_max is None
 
-        # Second event: after gap (last_off=None), ends at series end (first_off=None)
-        assert events[1].last_off is None
-        assert events[1].first_on == timestamps[2]
-        assert events[1].last_on == timestamps[3]
-        assert events[1].first_off is None
+        # Second event: after gap (start_min=None), ends at series end (stop_max=None)
+        assert events[1].start_min is None
+        assert events[1].start_max == timestamps[2]
+        assert events[1].stop_min == timestamps[3]
+        assert events[1].stop_max is None
 
     def test_custom_max_time_gap(self):
         """Test using a custom max_gap parameter."""
@@ -213,12 +213,12 @@ class TestTimeGapHandling:
         events = events_from_state(timestamps, states, max_gap=60.0)
 
         assert len(events) == 2
-        assert events[0].first_on == timestamps[0]
-        assert events[0].first_off == timestamps[1]
-        # After the gap, the off sample within the new segment is used as last_off
-        assert events[1].last_off == timestamps[2]
-        assert events[1].first_on == timestamps[3]
-        assert events[1].first_off is None
+        assert events[0].start_max == timestamps[0]
+        assert events[0].stop_max == timestamps[1]
+        # After the gap, the off sample within the new segment is used as start_min
+        assert events[1].start_min == timestamps[2]
+        assert events[1].start_max == timestamps[3]
+        assert events[1].stop_max is None
 
     def test_exact_threshold_gap(self):
         """Test behavior at exactly the threshold."""
@@ -275,18 +275,18 @@ class TestTimeGapHandling:
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 2
 
-        # First event: starts at beginning (last_off=None), split by gap (first_off=None)
-        assert events[0].last_off is None
-        assert events[0].first_off is None
+        # First event: starts at beginning (start_min=None), split by gap (stop_max=None)
+        assert events[0].start_min is None
+        assert events[0].stop_max is None
 
-        # Second event: split by gap (last_off=None), ends at end (first_off=None)
-        assert events[1].last_off is None
-        assert events[1].first_off is None
+        # Second event: split by gap (start_min=None), ends at end (stop_max=None)
+        assert events[1].start_min is None
+        assert events[1].stop_max is None
 
-        assert events[0].first_on == timestamps[0]
-        assert events[0].last_on == timestamps[1]
-        assert events[1].first_on == timestamps[2]
-        assert events[1].last_on == timestamps[3]
+        assert events[0].start_max == timestamps[0]
+        assert events[0].stop_min == timestamps[1]
+        assert events[1].start_max == timestamps[2]
+        assert events[1].stop_min == timestamps[3]
 
 
 class TestEdgeCases:
@@ -309,7 +309,7 @@ class TestEdgeCases:
         assert len(events) == 3
 
         for event in events:
-            assert event.first_on == event.last_on  # Single-timestamp events
+            assert event.start_max == event.stop_min  # Single-timestamp events
 
     def test_long_on_period(self):
         """Test a long continuous on period."""
@@ -319,11 +319,11 @@ class TestEdgeCases:
         states = np.array([False] + [True] * 8 + [False])
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
-        assert events[0].first_on == timestamps[1]
-        assert events[0].last_on == timestamps[8]
+        assert events[0].start_max == timestamps[1]
+        assert events[0].stop_min == timestamps[8]
 
-    def test_equal_first_and_last_on(self):
-        """Test case where first_on equals last_on (single True timestamp)."""
+    def test_equal_first_and_stop_min(self):
+        """Test case where start_max equals stop_min (single True timestamp)."""
         timestamps = np.array(
             ["2024-01-01T00:00:00", "2024-01-01T00:01:00", "2024-01-01T00:02:00"],
             dtype="datetime64",
@@ -331,7 +331,7 @@ class TestEdgeCases:
         states = np.array([False, True, False])
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
-        assert events[0].first_on == events[0].last_on == timestamps[1]
+        assert events[0].start_max == events[0].stop_min == timestamps[1]
 
     def test_multiple_consecutive_true_at_start(self):
         """Test multiple True states at the beginning."""
@@ -347,10 +347,10 @@ class TestEdgeCases:
         states = np.array([True, True, True, False])
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
-        assert events[0].last_off is None
-        assert events[0].first_on == timestamps[0]
-        assert events[0].last_on == timestamps[2]
-        assert events[0].first_off == timestamps[3]
+        assert events[0].start_min is None
+        assert events[0].start_max == timestamps[0]
+        assert events[0].stop_min == timestamps[2]
+        assert events[0].stop_max == timestamps[3]
 
     def test_multiple_consecutive_true_at_end(self):
         """Test multiple True states at the end."""
@@ -366,10 +366,10 @@ class TestEdgeCases:
         states = np.array([False, True, True, True])
         events = events_from_state(timestamps, states, max_gap=60.0)
         assert len(events) == 1
-        assert events[0].last_off == timestamps[0]
-        assert events[0].first_on == timestamps[1]
-        assert events[0].last_on == timestamps[3]
-        assert events[0].first_off is None
+        assert events[0].start_min == timestamps[0]
+        assert events[0].start_max == timestamps[1]
+        assert events[0].stop_min == timestamps[3]
+        assert events[0].stop_max is None
 
 
 class TestComplexScenarios:
@@ -395,16 +395,16 @@ class TestComplexScenarios:
         assert len(events) == 2
 
         # First event
-        assert events[0].last_off == timestamps[0]
-        assert events[0].first_on == timestamps[1]
-        assert events[0].last_on == timestamps[2]
-        assert events[0].first_off == timestamps[3]
+        assert events[0].start_min == timestamps[0]
+        assert events[0].start_max == timestamps[1]
+        assert events[0].stop_min == timestamps[2]
+        assert events[0].stop_max == timestamps[3]
 
-        # Second event (after gap — last_off is None because segment starts on)
-        assert events[1].last_off is None
-        assert events[1].first_on == timestamps[4]
-        assert events[1].last_on == timestamps[5]
-        assert events[1].first_off == timestamps[6]
+        # Second event (after gap — start_min is None because segment starts on)
+        assert events[1].start_min is None
+        assert events[1].start_max == timestamps[4]
+        assert events[1].stop_min == timestamps[5]
+        assert events[1].stop_max == timestamps[6]
 
     def test_very_short_timestamps(self):
         """Test with timestamps in milliseconds."""
@@ -416,5 +416,5 @@ class TestComplexScenarios:
         )  # 200 milliseconds = 0.2 seconds
 
         assert len(events) == 1
-        assert events[0].first_on == timestamps[1]
-        assert events[0].last_on == timestamps[3]
+        assert events[0].start_max == timestamps[1]
+        assert events[0].stop_min == timestamps[3]

@@ -81,9 +81,9 @@ class OnOffStateProcessor:
 
             if self._pending is not None:
                 if is_large_gap:
-                    self._close_pending(first_off=None)
+                    self._close_pending(stop_max=None)
                 elif not state[0]:
-                    self._close_pending(first_off=cast(np.datetime64, time[0]))
+                    self._close_pending(stop_max=cast(np.datetime64, time[0]))
                 # else: small gap & state[0] is True → pending stays open
         else:
             is_large_gap = True  # no previous batch → treat as discontinuity
@@ -105,7 +105,7 @@ class OnOffStateProcessor:
 
             # Close pending on internal segment boundaries
             if seg_idx > 0 and self._pending is not None:
-                self._close_pending(first_off=None)
+                self._close_pending(stop_max=None)
 
             seg_time = time[seg_s : seg_e + 1]
             seg_state = state[seg_s : seg_e + 1]
@@ -126,34 +126,34 @@ class OnOffStateProcessor:
                 if starts_at_edge:
                     if self._pending is not None:
                         # Continue the pending event
-                        self._pending["last_on"] = cast(np.datetime64, seg_time[re])
+                        self._pending["stop_min"] = cast(np.datetime64, seg_time[re])
                         if not ends_at_edge:
                             self._close_pending(
-                                first_off=cast(np.datetime64, seg_time[re + 1])
+                                stop_max=cast(np.datetime64, seg_time[re + 1])
                             )
                         continue
 
-                    # No pending – determine last_off from cross-batch info
+                    # No pending – determine start_min from cross-batch info
                     if seg_idx == 0 and not is_large_gap:
-                        last_off = self._last_time
+                        start_min = self._last_time
                     else:
-                        last_off = None
+                        start_min = None
                 else:
-                    last_off = cast(np.datetime64, seg_time[rs - 1])
+                    start_min = cast(np.datetime64, seg_time[rs - 1])
 
-                first_on = cast(np.datetime64, seg_time[rs])
-                last_on = cast(np.datetime64, seg_time[re])
+                start_max = cast(np.datetime64, seg_time[rs])
+                stop_min = cast(np.datetime64, seg_time[re])
 
                 if ends_at_edge:
                     # Run reaches the right edge – keep as pending
                     self._pending = {
-                        "last_off": last_off,
-                        "first_on": first_on,
-                        "last_on": last_on,
+                        "start_min": start_min,
+                        "start_max": start_max,
+                        "stop_min": stop_min,
                     }
                 else:
-                    first_off = cast(np.datetime64, seg_time[re + 1])
-                    self._make_event(last_off, first_on, last_on, first_off)
+                    stop_max = cast(np.datetime64, seg_time[re + 1])
+                    self._make_event(start_min, start_max, stop_min, stop_max)
 
         # --- Update cross-batch tracking ----------------------------------
         self._last_time = cast(np.datetime64, time[-1])
@@ -170,40 +170,40 @@ class OnOffStateProcessor:
 
         Call after the last batch has been processed.  If the state was True at
         the end of the final batch, the pending event is closed with
-        ``first_off=None``.
+        ``stop_max=None``.
         """
-        self._close_pending(first_off=None)
+        self._close_pending(stop_max=None)
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _close_pending(self, first_off: Optional[np.datetime64]) -> None:
-        """Close the pending event with the given *first_off* and store it."""
+    def _close_pending(self, stop_max: Optional[np.datetime64]) -> None:
+        """Close the pending event with the given *stop_max* and store it."""
         if self._pending is None:
             return
         self._make_event(
-            last_off=self._pending["last_off"],
-            first_on=cast(np.datetime64, self._pending["first_on"]),
-            last_on=cast(np.datetime64, self._pending["last_on"]),
-            first_off=first_off,
+            start_min=self._pending["start_min"],
+            start_max=cast(np.datetime64, self._pending["start_max"]),
+            stop_min=cast(np.datetime64, self._pending["stop_min"]),
+            stop_max=stop_max,
         )
         self._pending = None
 
     def _make_event(
         self,
-        last_off: Optional[np.datetime64],
-        first_on: np.datetime64,
-        last_on: np.datetime64,
-        first_off: Optional[np.datetime64],
+        start_min: Optional[np.datetime64],
+        start_max: np.datetime64,
+        stop_min: np.datetime64,
+        stop_max: Optional[np.datetime64],
     ) -> None:
         """Create an Event with instance properties and append to buffer."""
         self._events.append(
             Event(
-                last_off=last_off,
-                first_on=first_on,
-                last_on=last_on,
-                first_off=first_off,
+                start_min=start_min,
+                start_max=start_max,
+                stop_min=stop_min,
+                stop_max=stop_max,
                 description=self.description,
                 color=self.color,
             )

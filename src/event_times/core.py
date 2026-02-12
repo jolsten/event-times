@@ -86,18 +86,18 @@ def events_from_state(
 
         seg_len = len(seg_time)
         for rs, re in zip(run_starts, run_ends):
-            last_off: Optional[np.datetime64] = (
+            start_min: Optional[np.datetime64] = (
                 None if rs == 0 else cast(np.datetime64, seg_time[rs - 1])
             )
-            first_off: Optional[np.datetime64] = (
+            stop_max: Optional[np.datetime64] = (
                 None if re == seg_len - 1 else cast(np.datetime64, seg_time[re + 1])
             )
             events.append(
                 Event(
-                    last_off=last_off,
-                    first_on=cast(np.datetime64, seg_time[rs]),
-                    last_on=cast(np.datetime64, seg_time[re]),
-                    first_off=first_off,
+                    start_min=start_min,
+                    start_max=cast(np.datetime64, seg_time[rs]),
+                    stop_min=cast(np.datetime64, seg_time[re]),
+                    stop_max=stop_max,
                 )
             )
 
